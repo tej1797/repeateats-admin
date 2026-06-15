@@ -399,6 +399,7 @@ export async function POST(request: Request) {
     .order("created_at", { ascending: false })
     .limit(SCRAPE_BUDGET);
 
+  let enriched = 0;
   if (toEnrich && toEnrich.length > 0) {
     await mapLimit(toEnrich, 8, async (row: any) => {
       const email = await scrapeEmail(row.website);
@@ -407,14 +408,15 @@ export async function POST(request: Request) {
           .from("email_prospects")
           .update({ email })
           .eq("id", row.id);
-        if (!error) emailsFound++;
+        if (!error) enriched++;
       }
     });
   }
 
   return NextResponse.json({
     added: totalAdded,
-    emails_found: emailsFound,
+    emails_found: emailsFound + enriched,
+    enriched,
     enriched_scanned: toEnrich?.length ?? 0,
     cities: citiesToProcess,
     sources: [...sourcesUsed],

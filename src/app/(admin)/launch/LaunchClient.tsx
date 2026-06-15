@@ -99,14 +99,23 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
         : json.sources?.includes("openstreetmap")
         ? "OpenStreetMap"
         : "";
+      const enrichedNote =
+        json.enriched > 0 ? ` · found ${json.enriched} new emails` : "";
       if (json.added > 0) {
         setCrawlResult(
-          `Added ${json.added} restaurants (${json.emails_found} with email) from ${json.cities?.join(", ")}` +
-            (sourceLabel ? ` · via ${sourceLabel}` : "")
+          `Added ${json.added} restaurants from ${json.cities?.join(", ")}` +
+            (sourceLabel ? ` via ${sourceLabel}` : "") +
+            enrichedNote
         );
+      } else if (json.enriched > 0) {
+        setCrawlResult(`Found ${json.enriched} new emails on existing prospects' websites.`);
       } else if (json.errors?.length) {
         setCrawlError(true);
-        setCrawlResult(json.errors[0]);
+        // Show the discovery error but make clear it's the server being rate-limited
+        setCrawlResult(
+          json.errors.find((e: string) => e.includes("OSM") || e.includes("Places")) ??
+            json.errors[0]
+        );
       } else {
         setCrawlResult(`No new restaurants found in ${json.cities?.join(", ")} (already crawled).`);
       }

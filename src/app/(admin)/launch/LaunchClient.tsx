@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Mail, Plus, Send, RefreshCw } from "lucide-react";
+import { Mail, Plus, Send, RefreshCw, Download, Upload } from "lucide-react";
 import { format } from "date-fns";
 
 type Props = {
@@ -37,12 +37,28 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
   const [body, setBody] = useState(DEFAULT_TEMPLATE);
   const [sending, setSending] = useState(false);
   const [crawling, setCrawling] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
 
   const handleCrawl = async () => {
     setCrawling(true);
     await fetch("/api/cron/crawl-restaurants", { method: "POST" });
     setCrawling(false);
     window.location.reload();
+  };
+
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    const text = await file.text();
+    const res = await fetch("/api/import/prospects", { method: "POST", body: text });
+    const json = await res.json();
+    setImportResult(`Imported ${json.inserted} prospects${json.skipped ? ` (${json.skipped} skipped)` : ""}`);
+    setImporting(false);
+    setTimeout(() => { setImportResult(null); window.location.reload(); }, 2000);
+    e.target.value = "";
   };
 
   const handleSendCampaign = async () => {
@@ -159,9 +175,37 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
 
       {/* Prospect list preview */}
       <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          Prospects ({prospects.length})
-        </p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Prospects ({stats.total})
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.open("/api/export?type=prospects", "_blank")}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium"
+              style={{ backgroundColor: "#1E1E1E", color: "#888" }}
+            >
+              <Download size={11} /> Export
+            </button>
+            <label
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer"
+              style={{ backgroundColor: "#1E1E1E", color: importing ? "#888" : "#E85D04" }}
+            >
+              <Upload size={11} />
+              {importing ? "Importing…" : "Import CSV"}
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleImportCSV}
+                disabled={importing}
+              />
+            </label>
+          </div>
+        </div>
+        {importResult && (
+          <p className="text-xs text-green-400 mb-2">{importResult}</p>
+        )}
         <div className="space-y-2">
           {prospects.slice(0, 20).map((p: any) => (
             <div key={p.id} className="bg-card border border-border rounded-2xl p-3 flex items-center gap-3">

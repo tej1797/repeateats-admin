@@ -4,7 +4,17 @@ import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { formatDistanceToNow } from "date-fns";
-import { Search, Users, Store, Star } from "lucide-react";
+import { Search, Users, Store, Star, Download } from "lucide-react";
+
+const TAB_EXPORT: Record<string, string> = {
+  customers: "customers",
+  restaurants: "restaurants",
+  creators: "creators",
+};
+
+function downloadExport(type: string) {
+  window.open(`/api/export?type=${type}`, "_blank");
+}
 
 type Props = {
   customers: any[];
@@ -37,7 +47,17 @@ export function UsersClient({ customers, restaurants, creators, activeTab, query
   return (
     <div className="pt-12">
       <div className="px-4 pb-3">
-        <h1 className="text-xl font-bold text-foreground mb-3">Users</h1>
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-xl font-bold text-foreground">Users</h1>
+          <button
+            onClick={() => downloadExport(TAB_EXPORT[activeTab] ?? activeTab)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium"
+            style={{ backgroundColor: "#1E1E1E", color: "#888" }}
+          >
+            <Download size={13} />
+            Export CSV
+          </button>
+        </div>
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input

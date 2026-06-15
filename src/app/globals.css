@@ -1,0 +1,136 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Brand colors */
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-muted: var(--brand-muted);
+}
+
+/* Force dark theme always — this is an owner-only admin app */
+:root {
+  color-scheme: dark;
+
+  /* RepeatEats brand */
+  --brand: #E85D04;
+  --brand-hover: #FF7A30;
+  --brand-muted: rgba(232, 93, 4, 0.15);
+
+  /* Dark theme as default */
+  --background: #0A0A0A;
+  --foreground: #F0F0F0;
+  --card: #141414;
+  --card-foreground: #F0F0F0;
+  --popover: #1a1a1a;
+  --popover-foreground: #F0F0F0;
+  --primary: #E85D04;
+  --primary-foreground: #ffffff;
+  --secondary: #1E1E1E;
+  --secondary-foreground: #F0F0F0;
+  --muted: #1E1E1E;
+  --muted-foreground: #888888;
+  --accent: #1E1E1E;
+  --accent-foreground: #F0F0F0;
+  --destructive: #ef4444;
+  --border: #2a2a2a;
+  --input: #1E1E1E;
+  --ring: #E85D04;
+
+  --chart-1: #E85D04;
+  --chart-2: #22c55e;
+  --chart-3: #3b82f6;
+  --chart-4: #a855f7;
+  --chart-5: #f59e0b;
+
+  --radius: 0.75rem;
+
+  --sidebar: #0f0f0f;
+  --sidebar-foreground: #F0F0F0;
+  --sidebar-primary: #E85D04;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1E1E1E;
+  --sidebar-accent-foreground: #F0F0F0;
+  --sidebar-border: #2a2a2a;
+  --sidebar-ring: #E85D04;
+}
+
+/* Bottom safe area padding for iPhone */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+.pb-nav {
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Smooth scrolling regions */
+.scroll-smooth {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Hide scrollbars on mobile but keep scroll */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

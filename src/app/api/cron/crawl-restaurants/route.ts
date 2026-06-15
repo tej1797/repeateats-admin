@@ -18,18 +18,14 @@ async function scrapeEmailFromWebsite(url: string): Promise<string | null> {
     clearTimeout(timeout);
     if (!res.ok) return null;
     const html = await res.text();
-    // Try mailto: links first
     const mailtoMatch = html.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i);
     if (mailtoMatch) return mailtoMatch[1].toLowerCase();
-    // Fallback: look for email pattern in text (avoid common false positives)
     const textMatch = html.replace(/<[^>]+>/g, " ").match(
       /\b([a-zA-Z0-9._%+\-]+@(?!.*\.(png|jpg|gif|svg|webp|css|js))[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6})\b/
     );
     if (textMatch) {
       const email = textMatch[1].toLowerCase();
-      // Filter out common false positives
-      if (!email.includes("example.com") && !email.includes("sentry.io") &&
-          !email.includes("w3.org") && !email.includes("schema.org")) {
+      if (!["example.com", "sentry.io", "w3.org", "schema.org"].some(d => email.includes(d))) {
         return email;
       }
     }
@@ -39,43 +35,39 @@ async function scrapeEmailFromWebsite(url: string): Promise<string | null> {
   }
 }
 
-async function fetchPlacesPage(city: string): Promise<{ results: any[]; error?: string }> {
+// Uses Places API (New) — legacy Text Search is disabled on this project
+async function searchPlaces(city: string): Promise<{ results: any[]; error?: string }> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return { results: [], error: "GOOGLE_PLACES_API_KEY not set" };
 
   try {
-    const params = new URLSearchParams({
-      query: `restaurant in ${city} Ontario Canada`,
-      type: "restaurant",
-      key: apiKey,
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": [
+          "places.id",
+          "places.displayName",
+          "places.formattedAddress",
+          "places.websiteUri",
+          "places.nationalPhoneNumber",
+        ].join(","),
+      },
+      body: JSON.stringify({
+        textQuery: `restaurants in ${city} Ontario Canada`,
+        maxResultCount: 20,
+        includedType: "restaurant",
+      }),
     });
-    const res = await fetch(
-      `https://maps.googleapis.com/maps/api/place/textsearch/json?${params}`
-    );
+
     const data = await res.json();
-    if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-      return { results: [], error: `Places API: ${data.status} — ${data.error_message ?? ""}` };
+    if (!res.ok) {
+      return { results: [], error: `Places API: ${data.error?.message ?? res.statusText}` };
     }
-    return { results: data.results ?? [] };
+    return { results: data.places ?? [] };
   } catch (err: any) {
     return { results: [], error: err.message };
-  }
-}
-
-async function getPlaceDetails(placeId: string): Promise<{ website?: string; phone?: string }> {
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (!apiKey) return {};
-  try {
-    const res = await fetch(
-      `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=website,formatted_phone_number&key=${apiKey}`
-    );
-    const data = await res.json();
-    return {
-      website: data.result?.website,
-      phone: data.result?.formatted_phone_number,
-    };
-  } catch {
-    return {};
   }
 }
 
@@ -84,7 +76,6 @@ export async function POST() {
   let totalAdded = 0;
   const errors: string[] = [];
 
-  // Rotate through 3 cities per run based on day of month
   const dayIndex = new Date().getDate() % ONTARIO_CITIES.length;
   const citiesToProcess = [
     ONTARIO_CITIES[dayIndex % ONTARIO_CITIES.length],
@@ -93,44 +84,40 @@ export async function POST() {
   ];
 
   for (const city of citiesToProcess) {
-    const { results, error } = await fetchPlacesPage(city);
-    if (error) {
-      errors.push(`${city}: ${error}`);
-      continue;
-    }
+    const { results, error } = await searchPlaces(city);
+    if (error) { errors.push(`${city}: ${error}`); continue; }
 
-    for (const place of results.slice(0, 10)) {
+    for (const place of results) {
       try {
-        // Skip if already exists
+        const placeId = place.id;
+        if (!placeId) continue;
+
         const { data: existing } = await admin
           .from("email_prospects")
           .select("id")
-          .eq("google_place_id", place.place_id)
+          .eq("google_place_id", placeId)
           .single();
         if (existing) continue;
 
-        const details = await getPlaceDetails(place.place_id);
-
+        const website: string | undefined = place.websiteUri;
         let email: string | null = null;
-        if (details.website) {
-          email = await scrapeEmailFromWebsite(details.website);
-        }
+        if (website) email = await scrapeEmailFromWebsite(website);
 
         await admin.from("email_prospects").insert({
-          name: place.name,
+          name: place.displayName?.text ?? "Unknown",
           email,
-          phone: details.phone ?? null,
-          website: details.website ?? null,
-          address: place.formatted_address ?? null,
+          phone: place.nationalPhoneNumber ?? null,
+          website: website ?? null,
+          address: place.formattedAddress ?? null,
           city,
-          google_place_id: place.place_id,
+          google_place_id: placeId,
           source: "google_places",
           status: "prospect",
         });
 
         totalAdded++;
       } catch (err: any) {
-        errors.push(`${place.name}: ${err.message}`);
+        errors.push(`${place.displayName?.text}: ${err.message}`);
       }
     }
   }
@@ -138,7 +125,6 @@ export async function POST() {
   return NextResponse.json({ added: totalAdded, cities: citiesToProcess, errors });
 }
 
-// Vercel Cron handler (GET)
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {

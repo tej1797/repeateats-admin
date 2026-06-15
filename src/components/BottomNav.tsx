@@ -15,8 +15,9 @@ const PRIMARY_TABS = [
 ];
 
 const MORE_ITEMS = [
-  { href: "/templates", label: "Quick Reply Templates", emoji: "⚡" },
+  { href: "/broadcast", label: "Broadcast", emoji: "📣" },
   { href: "/launch", label: "Launch Outreach", emoji: "🚀" },
+  { href: "/templates", label: "Quick Reply Templates", emoji: "⚡" },
   { href: "/settings", label: "Settings", emoji: "⚙️" },
 ];
 

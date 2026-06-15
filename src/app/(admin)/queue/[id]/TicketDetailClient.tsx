@@ -226,7 +226,7 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
   const portalColor = PORTAL_COLORS[ticket.portal] ?? "#888";
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="fixed inset-0 z-40 flex flex-col bg-background">
       {/* Header */}
       <div className="bg-card border-b border-border px-4 pt-12 pb-3 flex-shrink-0">
         <div className="flex items-center gap-3 mb-3">
@@ -295,8 +295,8 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      {/* Messages — flex-1 min-h-0 so only this section scrolls */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
         {messages.map((msg) => {
           const isAdmin = msg.sender_type === "admin";
           const isNote = msg.is_internal_note;
@@ -337,8 +337,8 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
         <div ref={bottomRef} />
       </div>
 
-      {/* Reply input */}
-      <div className="bg-card border-t border-border px-4 pt-3 pb-safe flex-shrink-0">
+      {/* Reply input — pb-16 clears the fixed BottomNav (h-16) */}
+      <div className="bg-card border-t border-border px-4 pt-3 pb-16 flex-shrink-0">
         {/* Note toggle */}
         <div className="flex items-center gap-2 mb-2">
           <button

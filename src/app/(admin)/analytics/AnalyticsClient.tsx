@@ -27,9 +27,12 @@ type Props =
 const LIMIT_OPTIONS = [10, 20, 30, 50, "All"] as const;
 type LimitOption = typeof LIMIT_OPTIONS[number];
 
+type SortKey = "redeems" | "claims";
+
 export function AnalyticsClient(props: Props) {
   const router = useRouter();
   const [restaurantLimit, setRestaurantLimit] = useState<LimitOption>(10);
+  const [chartSort, setChartSort] = useState<SortKey>("redeems");
 
   if (props.view === "restaurant") {
     return <RestaurantDrillDown restaurant={props.restaurant} deals={props.deals} />;
@@ -37,12 +40,14 @@ export function AnalyticsClient(props: Props) {
 
   const { overview, restaurants } = props;
 
-  const sortedRestaurants = [...restaurants].sort((a, b) => b.total_redeems - a.total_redeems);
+  const sortedRestaurants = [...restaurants].sort((a, b) =>
+    chartSort === "claims" ? b.total_claims - a.total_claims : b.total_redeems - a.total_redeems
+  );
   const limitedRestaurants =
     restaurantLimit === "All" ? sortedRestaurants : sortedRestaurants.slice(0, restaurantLimit);
 
-  const chartData = sortedRestaurants.slice(0, 8).map((r: any) => ({
-    name: r.name.length > 10 ? r.name.split(" ")[0] : r.name,
+  const chartData = sortedRestaurants.slice(0, 10).map((r: any) => ({
+    name: r.name,
     claims: r.total_claims,
     redeems: r.total_redeems,
     id: r.id,
@@ -136,31 +141,65 @@ export function AnalyticsClient(props: Props) {
       {/* Restaurant performance bar chart */}
       {chartData.length > 0 && (
         <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            Restaurant Performance{" "}
-            <span className="text-[10px] normal-case font-normal ml-1">Tap to drill down</span>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Restaurant Performance
+            </p>
+            <div className="flex gap-3 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: "#E85D04" }} />
+                Claims
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: "#22c55e" }} />
+                Redeems
+              </span>
+            </div>
+          </div>
+          <p className="text-[10px] text-muted-foreground mb-2">
+            Tap a bar to sort the list below · sorted by{" "}
+            <span style={{ color: chartSort === "claims" ? "#E85D04" : "#22c55e" }}>
+              {chartSort}
+            </span>
           </p>
-          <div className="h-48">
+          <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={chartData}
-                margin={{ top: 4, right: 4, left: -24, bottom: 0 }}
+                margin={{ top: 4, right: 4, left: -24, bottom: 48 }}
                 style={{ background: "transparent" }}
-                onClick={(data: any) => {
-                  if (data?.activePayload?.[0]?.payload?.id) {
-                    router.push(`/analytics?view=restaurant&restaurantId=${data.activePayload[0].payload.id}`);
-                  }
-                }}
               >
-                <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#888" }} axisLine={false} tickLine={false} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 8, fill: "#888" }}
+                  axisLine={false}
+                  tickLine={false}
+                  angle={-40}
+                  textAnchor="end"
+                  interval={0}
+                />
                 <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: "#888" }} axisLine={false} tickLine={false} />
                 <Tooltip
                   contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 8, fontSize: 11 }}
                   labelStyle={{ color: "#ccc" }}
                   cursor={{ fill: "rgba(255,255,255,0.05)" }}
                 />
-                <Bar dataKey="claims" name="Claims" fill="#E85D04" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="redeems" name="Redeems" fill="#22c55e" radius={[3, 3, 0, 0]} />
+                <Bar
+                  dataKey="claims"
+                  name="Claims"
+                  fill="#E85D04"
+                  radius={[3, 3, 0, 0]}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setChartSort("claims")}
+                />
+                <Bar
+                  dataKey="redeems"
+                  name="Redeems"
+                  fill="#22c55e"
+                  radius={[3, 3, 0, 0]}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setChartSort("redeems")}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -171,7 +210,13 @@ export function AnalyticsClient(props: Props) {
       <div className="space-y-2 pb-2">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            By Restaurant
+            By Restaurant{" "}
+            <span
+              className="normal-case font-normal text-[10px]"
+              style={{ color: chartSort === "claims" ? "#E85D04" : "#22c55e" }}
+            >
+              ↓ {chartSort}
+            </span>
           </p>
           <div className="flex gap-1">
             {LIMIT_OPTIONS.map((opt) => (

@@ -337,8 +337,8 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
         <div ref={bottomRef} />
       </div>
 
-      {/* Reply input — pb-16 clears the fixed BottomNav (h-16) */}
-      <div className="bg-card border-t border-border px-4 pt-3 pb-16 flex-shrink-0">
+      {/* Reply input — pb-nav clears the fixed BottomNav + safe-area-inset */}
+      <div className="bg-card border-t border-border px-4 pt-3 pb-nav flex-shrink-0">
         {/* Note toggle */}
         <div className="flex items-center gap-2 mb-2">
           <button
@@ -373,7 +373,8 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
             onChange={(e) => setReply(e.target.value)}
             placeholder={isNote ? "Add internal note…" : "Reply to user…"}
             rows={2}
-            className="flex-1 resize-none bg-secondary border-border text-sm rounded-xl"
+            className="flex-1 resize-none bg-secondary text-sm rounded-xl border"
+            style={{ borderColor: isNote ? "#ca8a04" : portalColor }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -385,7 +386,7 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
             onClick={sendReply}
             disabled={sending || !reply.trim()}
             className="w-10 h-10 self-end rounded-xl flex items-center justify-center disabled:opacity-40 transition-opacity"
-            style={{ backgroundColor: "#E85D04" }}
+            style={{ backgroundColor: isNote ? "#ca8a04" : portalColor }}
           >
             <Send size={16} className="text-white" />
           </button>

@@ -43,11 +43,16 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
 
   // Fetch target push tokens
-  let tokenQuery = admin.from("users").select("id, expo_push_token").not("expo_push_token", "is", null);
+  let users: { id: string; expo_push_token: string }[] = [];
+
   if (audience === "customers") {
-    tokenQuery = tokenQuery.not("role", "eq", "restaurant");
+    const { data } = await admin
+      .from("users")
+      .select("id, expo_push_token")
+      .not("expo_push_token", "is", null)
+      .not("role", "eq", "restaurant");
+    users = (data ?? []) as typeof users;
   } else if (audience === "restaurants") {
-    // Get tokens for users who own a restaurant
     const { data: owners } = await admin
       .from("restaurants")
       .select("owner_id")
@@ -56,10 +61,19 @@ export async function POST(request: Request) {
     if (ownerIds.length === 0) {
       return NextResponse.json({ sent: 0, failed: 0, in_app: 0, skipped: "no restaurant owners" });
     }
-    tokenQuery = tokenQuery.in("id", ownerIds);
+    const { data } = await admin
+      .from("users")
+      .select("id, expo_push_token")
+      .not("expo_push_token", "is", null)
+      .in("id", ownerIds);
+    users = (data ?? []) as typeof users;
+  } else {
+    const { data } = await admin
+      .from("users")
+      .select("id, expo_push_token")
+      .not("expo_push_token", "is", null);
+    users = (data ?? []) as typeof users;
   }
-
-  const { data: users } = await tokenQuery;
   const tokens = (users ?? []).map((u) => u.expo_push_token).filter(Boolean);
 
   // Send push

@@ -65,6 +65,33 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
   const [emailBody, setEmailBody] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
 
+  const buildConversationText = (msgs: SupportMessage[]) => {
+    const visible = msgs.filter((m) => !m.is_internal_note);
+    const lines = [
+      `Hi ${ticket.user_name ?? "there"},`,
+      ``,
+      `Here is a summary of your support conversation with RepeatEats:`,
+      `Subject: ${ticket.subject}`,
+      ``,
+    ];
+    visible.forEach((m) => {
+      const sender = m.sender_type === "admin" ? "RepeatEats Support" : (ticket.user_name ?? "You");
+      lines.push(`[${format(new Date(m.created_at), "MMM d, h:mm a")}] ${sender}:`);
+      lines.push(m.message ?? "");
+      lines.push("");
+    });
+    lines.push("—");
+    lines.push("RepeatEats Support Team");
+    lines.push("support@repeateats.ca");
+    return lines.join("\n");
+  };
+
+  const openEmailDialog = () => {
+    setEmailBody(buildConversationText(messages));
+    setEmailSubject(`Re: ${ticket.subject}`);
+    setShowEmail(true);
+  };
+
   // Subscribe to new messages via Supabase Realtime
   useEffect(() => {
     const channel = supabase
@@ -163,7 +190,7 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
   const sendEmail = async () => {
     if (!emailBody.trim()) return;
     setSendingEmail(true);
-    await fetch("/api/tickets/send-email", {
+    const res = await fetch("/api/tickets/send-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -171,11 +198,23 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
         to_email: ticket.user_email,
         subject: emailSubject,
         body: emailBody,
+        // Pass structured messages so the API can build a nice HTML thread
+        messages: messages
+          .filter((m) => !m.is_internal_note)
+          .map((m) => ({
+            sender_type: m.sender_type,
+            message: m.message ?? "",
+            created_at: m.created_at,
+          })),
+        user_name: ticket.user_name ?? "there",
+        portal: ticket.portal,
       }),
     });
     setSendingEmail(false);
-    setShowEmail(false);
-    setEmailBody("");
+    if (res.ok) {
+      setShowEmail(false);
+      setEmailBody("");
+    }
   };
 
   const applyTemplate = (t: QuickReplyTemplate) => {
@@ -247,7 +286,7 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
 
           {/* Email button */}
           <button
-            onClick={() => setShowEmail(true)}
+            onClick={openEmailDialog}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium flex-shrink-0 bg-secondary text-foreground ml-auto"
           >
             <Mail size={12} />
@@ -378,7 +417,7 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
       <Dialog open={showEmail} onOpenChange={setShowEmail}>
         <DialogContent className="bg-card border-border">
           <DialogHeader>
-            <DialogTitle>Send Email to {ticket.user_name ?? ticket.user_email}</DialogTitle>
+            <DialogTitle>Send Conversation to {ticket.user_name ?? ticket.user_email}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-2">
             <div>

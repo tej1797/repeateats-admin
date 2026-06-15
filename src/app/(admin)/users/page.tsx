@@ -16,13 +16,13 @@ export default async function UsersPage({
       .from("users")
       .select("*, claims(id, status)")
       .ilike(q ? "name" : "id", q ? `%${q}%` : "%")
-      .order("created_at", { ascending: false })
+      .order("name", { ascending: true })
       .limit(50),
     admin
       .from("restaurants")
       .select("*, deals(id, current_claims)")
       .ilike(q ? "name" : "id", q ? `%${q}%` : "%")
-      .order("created_at", { ascending: false })
+      .order("name", { ascending: true })
       .limit(50),
     admin
       .from("influencers")

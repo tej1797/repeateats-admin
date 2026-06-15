@@ -1,44 +1,111 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+// Allow the full Vercel timeout — scraping many websites takes time.
+export const maxDuration = 300;
+
 const ONTARIO_CITIES = [
   "Toronto", "Mississauga", "Brampton", "Markham", "Vaughan",
   "Richmond Hill", "Oakville", "Burlington", "Hamilton", "Ottawa",
   "Scarborough", "North York", "Etobicoke", "Pickering", "Ajax",
 ];
 
-async function scrapeEmailFromWebsite(url: string): Promise<string | null> {
+type Lead = {
+  name: string;
+  website: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  city: string;
+  google_place_id: string | null;
+  source: string;
+};
+
+/* ------------------------------------------------------------------ */
+/*  Email scraping — homepage + common contact pages                   */
+/* ------------------------------------------------------------------ */
+
+const EMAIL_RE = /\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b/g;
+const BAD_EMAIL_DOMAINS = [
+  "example.com", "sentry.io", "w3.org", "schema.org", "wordpress.com",
+  "wixpress.com", "godaddy.com", "squarespace.com", "googleapis.com",
+];
+const BAD_EMAIL_EXT = /\.(png|jpg|jpeg|gif|svg|webp|css|js|woff|woff2)$/i;
+
+function extractEmail(html: string): string | null {
+  // Prefer explicit mailto: links — these are almost always real contact emails.
+  const mailto = html.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i);
+  if (mailto) {
+    const e = mailto[1].toLowerCase();
+    if (!BAD_EMAIL_DOMAINS.some((d) => e.includes(d)) && !BAD_EMAIL_EXT.test(e)) return e;
+  }
+  // Fall back to any email found in the visible text.
+  const text = html.replace(/<[^>]+>/g, " ");
+  const matches = text.match(EMAIL_RE);
+  if (matches) {
+    for (const raw of matches) {
+      const e = raw.toLowerCase();
+      if (BAD_EMAIL_EXT.test(e)) continue;
+      if (BAD_EMAIL_DOMAINS.some((d) => e.includes(d))) continue;
+      return e;
+    }
+  }
+  return null;
+}
+
+async function fetchHtml(url: string, ms = 6000): Promise<string | null> {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+    const timeout = setTimeout(() => controller.abort(), ms);
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; RepeatEatsBot/1.0)" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; RepeatEatsBot/1.0; +https://repeateats.ca)" },
+      redirect: "follow",
     });
     clearTimeout(timeout);
     if (!res.ok) return null;
-    const html = await res.text();
-    const mailtoMatch = html.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i);
-    if (mailtoMatch) return mailtoMatch[1].toLowerCase();
-    const textMatch = html.replace(/<[^>]+>/g, " ").match(
-      /\b([a-zA-Z0-9._%+\-]+@(?!.*\.(png|jpg|gif|svg|webp|css|js))[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,6})\b/
-    );
-    if (textMatch) {
-      const email = textMatch[1].toLowerCase();
-      if (!["example.com", "sentry.io", "w3.org", "schema.org"].some(d => email.includes(d))) {
-        return email;
-      }
-    }
-    return null;
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("text/html") && !ct.includes("text/plain")) return null;
+    return await res.text();
   } catch {
     return null;
   }
 }
 
-// Uses Places API (New) — legacy Text Search is disabled on this project
-async function searchPlaces(city: string): Promise<{ results: any[]; error?: string }> {
+async function scrapeEmail(website: string): Promise<string | null> {
+  let base: URL;
+  try {
+    base = new URL(website);
+  } catch {
+    return null;
+  }
+
+  // 1) Homepage
+  const home = await fetchHtml(base.href);
+  if (home) {
+    const found = extractEmail(home);
+    if (found) return found;
+  }
+
+  // 2) Common contact pages
+  const contactPaths = ["/contact", "/contact-us", "/contactus", "/about", "/about-us"];
+  for (const path of contactPaths) {
+    const html = await fetchHtml(new URL(path, base.origin).href, 5000);
+    if (html) {
+      const found = extractEmail(html);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Source A — Google Places API (New). Needs billing + API enabled.   */
+/* ------------------------------------------------------------------ */
+
+async function searchGooglePlaces(city: string): Promise<{ leads: Lead[]; error?: string }> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (!apiKey) return { results: [], error: "GOOGLE_PLACES_API_KEY not set" };
+  if (!apiKey) return { leads: [], error: "no_key" };
 
   try {
     const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -63,66 +130,277 @@ async function searchPlaces(city: string): Promise<{ results: any[]; error?: str
 
     const data = await res.json();
     if (!res.ok) {
-      return { results: [], error: `Places API: ${data.error?.message ?? res.statusText}` };
+      return { leads: [], error: `Google Places: ${data.error?.message ?? res.statusText}` };
     }
-    return { results: data.places ?? [] };
+    const leads: Lead[] = (data.places ?? []).map((p: any) => ({
+      name: p.displayName?.text ?? "Unknown",
+      website: p.websiteUri ?? null,
+      address: p.formattedAddress ?? null,
+      phone: p.nationalPhoneNumber ?? null,
+      email: null,
+      city,
+      google_place_id: p.id ?? null,
+      source: "google_places",
+    }));
+    return { leads };
   } catch (err: any) {
-    return { results: [], error: err.message };
+    return { leads: [], error: `Google Places: ${err.message}` };
   }
 }
 
-export async function POST() {
+/* ------------------------------------------------------------------ */
+/*  Source B — OpenStreetMap Overpass API. Free, no key, no billing.   */
+/* ------------------------------------------------------------------ */
+
+// Approximate bounding box for the province of Ontario, used to discard
+// same-named cities elsewhere in the world (e.g. Brampton, UK).
+const ONTARIO_BBOX = { minLat: 41.6, maxLat: 57.0, minLon: -95.2, maxLon: -74.3 };
+
+function elementCoord(el: any): { lat: number; lon: number } | null {
+  if (typeof el.lat === "number") return { lat: el.lat, lon: el.lon };
+  if (el.center) return { lat: el.center.lat, lon: el.center.lon };
+  return null;
+}
+
+function inOntario(el: any): boolean {
+  const c = elementCoord(el);
+  if (!c) return false;
+  return (
+    c.lat >= ONTARIO_BBOX.minLat && c.lat <= ONTARIO_BBOX.maxLat &&
+    c.lon >= ONTARIO_BBOX.minLon && c.lon <= ONTARIO_BBOX.maxLon
+  );
+}
+
+// Public Overpass mirrors — tried in order so a rate-limited instance fails over.
+const OVERPASS_MIRRORS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
+
+async function overpassFetch(query: string): Promise<any | null> {
+  for (const endpoint of OVERPASS_MIRRORS) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 55000);
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) continue; // 429/406/5xx → try next mirror
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        continue; // rate-limit HTML page → try next mirror
+      }
+    } catch {
+      continue; // timeout/network → try next mirror
+    }
+  }
+  return null;
+}
+
+async function searchOverpass(city: string): Promise<{ leads: Lead[]; error?: string }> {
+  // Match the city's administrative boundary, then filter to Ontario in code
+  // (area-within-area filtering is unreliable on Overpass).
+  const query = `
+    [out:json][timeout:50];
+    area["name"="${city}"]["boundary"="administrative"]->.a;
+    (
+      nwr["amenity"~"^(restaurant|fast_food|cafe)$"](area.a);
+    );
+    out tags center 200;
+  `;
+
+  const data = await overpassFetch(query);
+  if (!data) {
+    return { leads: [], error: "OSM unavailable (all mirrors rate-limited) — try again in a minute" };
+  }
+
+  try {
+    const leads: Lead[] = [];
+    for (const el of data.elements ?? []) {
+      if (!inOntario(el)) continue; // drop same-named cities outside Ontario
+      const t = el.tags ?? {};
+      const name = t.name;
+      if (!name) continue; // unnamed POIs aren't useful for outreach
+
+      const website = t["contact:website"] || t.website || t["contact:url"] || null;
+      const email = (t["contact:email"] || t.email || null)?.toLowerCase() ?? null;
+      const phone = t["contact:phone"] || t.phone || null;
+
+      const addrParts = [
+        [t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" "),
+        t["addr:city"] || city,
+        t["addr:province"] || "ON",
+        t["addr:postcode"],
+      ].filter(Boolean);
+      const address = addrParts.length ? `${addrParts.join(", ")}, Canada` : null;
+
+      leads.push({
+        name,
+        website: website ? normalizeUrl(website) : null,
+        address,
+        phone,
+        email,
+        city,
+        google_place_id: null,
+        source: "openstreetmap",
+      });
+    }
+    return { leads };
+  } catch (err: any) {
+    return { leads: [], error: `OSM: ${err.message}` };
+  }
+}
+
+function normalizeUrl(url: string): string | null {
+  let u = url.trim();
+  if (!u) return null;
+  if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
+  try {
+    return new URL(u).href;
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Concurrency helper                                                  */
+/* ------------------------------------------------------------------ */
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const settled = await Promise.all(chunk.map(fn));
+    results.push(...settled);
+  }
+  return results;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main handler                                                        */
+/* ------------------------------------------------------------------ */
+
+export async function POST(request: Request) {
   const admin = createAdminClient();
-  let totalAdded = 0;
   const errors: string[] = [];
+  let totalAdded = 0;
+  let emailsFound = 0;
+
+  // Allow a manual run to target specific cities; otherwise rotate daily.
+  let requestedCities: string[] | null = null;
+  try {
+    const body = await request.json();
+    if (Array.isArray(body?.cities) && body.cities.length) requestedCities = body.cities;
+    else if (typeof body?.city === "string") requestedCities = [body.city];
+  } catch {
+    /* no body — fine */
+  }
 
   const dayIndex = new Date().getDate() % ONTARIO_CITIES.length;
-  const citiesToProcess = [
+  const citiesToProcess = requestedCities ?? [
     ONTARIO_CITIES[dayIndex % ONTARIO_CITIES.length],
     ONTARIO_CITIES[(dayIndex + 1) % ONTARIO_CITIES.length],
     ONTARIO_CITIES[(dayIndex + 2) % ONTARIO_CITIES.length],
   ];
 
+  const sourcesUsed = new Set<string>();
+
   for (const city of citiesToProcess) {
-    const { results, error } = await searchPlaces(city);
-    if (error) { errors.push(`${city}: ${error}`); continue; }
+    // Try Google Places first (richer data) — fall back to free OSM on any failure.
+    let leads: Lead[] = [];
+    const google = await searchGooglePlaces(city);
+    if (google.leads.length > 0) {
+      leads = google.leads;
+      sourcesUsed.add("google_places");
+    } else {
+      if (google.error && google.error !== "no_key") errors.push(`${city}: ${google.error} → using OpenStreetMap`);
+      const osm = await searchOverpass(city);
+      if (osm.error) {
+        errors.push(`${city}: ${osm.error}`);
+        continue;
+      }
+      leads = osm.leads;
+      sourcesUsed.add("openstreetmap");
+    }
 
-    for (const place of results) {
-      try {
-        const placeId = place.id;
-        if (!placeId) continue;
-
-        const { data: existing } = await admin
+    // Dedupe against existing prospects (by place id, website, or name+city).
+    const newLeads: Lead[] = [];
+    for (const lead of leads) {
+      let exists = null;
+      if (lead.google_place_id) {
+        const { data } = await admin
           .from("email_prospects")
           .select("id")
-          .eq("google_place_id", placeId)
-          .single();
-        if (existing) continue;
-
-        const website: string | undefined = place.websiteUri;
-        let email: string | null = null;
-        if (website) email = await scrapeEmailFromWebsite(website);
-
-        await admin.from("email_prospects").insert({
-          name: place.displayName?.text ?? "Unknown",
-          email,
-          phone: place.nationalPhoneNumber ?? null,
-          website: website ?? null,
-          address: place.formattedAddress ?? null,
-          city,
-          google_place_id: placeId,
-          source: "google_places",
-          status: "prospect",
-        });
-
-        totalAdded++;
-      } catch (err: any) {
-        errors.push(`${place.displayName?.text}: ${err.message}`);
+          .eq("google_place_id", lead.google_place_id)
+          .maybeSingle();
+        exists = data;
       }
+      if (!exists && lead.website) {
+        const { data } = await admin
+          .from("email_prospects")
+          .select("id")
+          .eq("website", lead.website)
+          .maybeSingle();
+        exists = data;
+      }
+      if (!exists) {
+        const { data } = await admin
+          .from("email_prospects")
+          .select("id")
+          .eq("name", lead.name)
+          .eq("city", city)
+          .maybeSingle();
+        exists = data;
+      }
+      if (!exists) newLeads.push(lead);
+    }
+
+    // Scrape emails for leads that have a website but no email yet (limited concurrency).
+    const needScrape = newLeads.filter((l) => l.website && !l.email);
+    await mapLimit(needScrape, 6, async (lead) => {
+      const email = await scrapeEmail(lead.website!);
+      if (email) {
+        lead.email = email;
+        emailsFound++;
+      }
+    });
+
+    // Insert the new prospects.
+    if (newLeads.length > 0) {
+      const rows = newLeads.map((l) => ({
+        name: l.name,
+        email: l.email,
+        phone: l.phone,
+        website: l.website,
+        address: l.address,
+        city: l.city,
+        google_place_id: l.google_place_id,
+        source: l.source,
+        status: "prospect",
+      }));
+      const { error } = await admin.from("email_prospects").insert(rows);
+      if (error) errors.push(`${city}: insert failed — ${error.message}`);
+      else totalAdded += rows.length;
     }
   }
 
-  return NextResponse.json({ added: totalAdded, cities: citiesToProcess, errors });
+  return NextResponse.json({
+    added: totalAdded,
+    emails_found: emailsFound,
+    cities: citiesToProcess,
+    sources: [...sourcesUsed],
+    errors,
+  });
 }
 
 export async function GET(request: Request) {
@@ -133,5 +411,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }
-  return POST();
+  // Build a Request with no body so POST uses the daily rotation.
+  return POST(new Request(request.url, { method: "POST" }));
 }

@@ -14,16 +14,25 @@ export default async function LaunchPage() {
       .limit(10),
     admin
       .from("email_prospects")
-      .select("id, name, email, city, status")
+      .select("id, name, email, phone, website, address, city, status, source")
       .order("created_at", { ascending: false })
-      .limit(100),
+      .limit(500),
   ]);
 
+  // Accurate counts straight from the DB (not limited by the page size).
+  const [{ count: totalCount }, { count: emailCount }, { count: emailedCount }, { count: registeredCount }] =
+    await Promise.all([
+      admin.from("email_prospects").select("id", { count: "exact", head: true }),
+      admin.from("email_prospects").select("id", { count: "exact", head: true }).not("email", "is", null),
+      admin.from("email_prospects").select("id", { count: "exact", head: true }).eq("status", "emailed"),
+      admin.from("email_prospects").select("id", { count: "exact", head: true }).eq("status", "registered"),
+    ]);
+
   const prospectStats = {
-    total: prospectsRes.data?.length ?? 0,
-    withEmail: prospectsRes.data?.filter((p) => p.email).length ?? 0,
-    emailed: prospectsRes.data?.filter((p) => p.status === "emailed").length ?? 0,
-    registered: prospectsRes.data?.filter((p) => p.status === "registered").length ?? 0,
+    total: totalCount ?? 0,
+    withEmail: emailCount ?? 0,
+    emailed: emailedCount ?? 0,
+    registered: registeredCount ?? 0,
   };
 
   return (

@@ -6,57 +6,116 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Mail, Plus, Send, RefreshCw, Download, Upload } from "lucide-react";
-import { format } from "date-fns";
+import {
+  Plus, Send, RefreshCw, Download, Upload, Globe, MapPin, Phone, Mail, ChevronDown,
+} from "lucide-react";
+
+type Prospect = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  status: string | null;
+  source: string | null;
+};
 
 type Props = {
   campaigns: any[];
-  prospects: any[];
+  prospects: Prospect[];
   stats: { total: number; withEmail: number; emailed: number; registered: number };
 };
 
-const DEFAULT_TEMPLATE = `Hi {{restaurant_name}},
+const ONTARIO_CITIES = [
+  "Toronto", "Mississauga", "Brampton", "Markham", "Vaughan",
+  "Richmond Hill", "Oakville", "Burlington", "Hamilton", "Ottawa",
+  "Scarborough", "North York", "Etobicoke", "Pickering", "Ajax",
+];
 
-I'm Tejas, the founder of RepeatEats — a new restaurant deals platform launching in Ontario this year.
+const DEFAULT_SUBJECT = "Bring new customers to {{restaurant_name}} — free to join RepeatEats 🍽️";
 
-RepeatEats lets restaurants post exclusive deals that customers discover and claim through our app. It's free to join during launch and a great way to attract new customers.
+const DEFAULT_TEMPLATE = `Hi {{restaurant_name}} team,
 
-🎬 See how it works: [YouTube Link]
-📱 Download the app: [App Store Link] | [Google Play Link]
+My name is Tejas Khatri, founder of RepeatEats — a local restaurant deals app built right here in Ontario.
 
-I'd love to have {{restaurant_name}} on the platform! Sign up here: https://www.repeateats.ca/restaurant
+We help restaurants like {{restaurant_name}} attract new diners and turn first-time visitors into regulars — with zero upfront cost.
 
-Best,
+HOW IT WORKS
+1. You post an exclusive deal (e.g. "Buy 1 Get 1 Free" or "20% off your first visit").
+2. Nearby customers discover {{restaurant_name}} in the RepeatEats app and claim your deal.
+3. They walk in and redeem it. You only pay a small fee on a verified redemption — no monthly fees, no risk.
+
+WHY RESTAURANTS JOIN
+• Free to sign up — no setup or subscription fees during our Ontario launch.
+• Get discovered by hungry customers who are actively looking for a place to eat.
+• A simple dashboard to track claims, redemptions and repeat visits.
+
+GET STARTED IN 5 MINUTES
+1. Visit https://www.repeateats.ca/restaurant and create your free account.
+2. Add your first deal.
+3. Go live — customers can start discovering you the same day.
+
+Your customers download the free RepeatEats app here:
+📱 iPhone (App Store): [iOS_APP_LINK]
+🤖 Android (Google Play): [ANDROID_APP_LINK]
+🌐 Learn more: https://www.repeateats.ca
+
+I'd genuinely love to welcome {{restaurant_name}} as one of our founding Ontario restaurants. Just reply to this email and I'll personally help you get set up.
+
+Warm regards,
 Tejas Khatri
-Founder, RepeatEats`;
+Founder, RepeatEats
+support@repeateats.ca · https://www.repeateats.ca`;
 
 export function LaunchClient({ campaigns, prospects, stats }: Props) {
   const [showCompose, setShowCompose] = useState(false);
   const [campaignName, setCampaignName] = useState("Launch Outreach - " + new Date().toLocaleDateString());
-  const [subject, setSubject] = useState("Join RepeatEats — Free for Ontario restaurants 🍽️");
+  const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [body, setBody] = useState(DEFAULT_TEMPLATE);
   const [sending, setSending] = useState(false);
   const [crawling, setCrawling] = useState(false);
   const [crawlResult, setCrawlResult] = useState<string | null>(null);
+  const [crawlError, setCrawlError] = useState(false);
+  const [crawlCity, setCrawlCity] = useState<string>("auto");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const handleCrawl = async () => {
     setCrawling(true);
     setCrawlResult(null);
+    setCrawlError(false);
     try {
-      const res = await fetch("/api/cron/crawl-restaurants", { method: "POST" });
+      const res = await fetch("/api/cron/crawl-restaurants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(crawlCity === "auto" ? {} : { city: crawlCity }),
+      });
       const json = await res.json();
-      if (json.errors?.length > 0) {
-        setCrawlResult(`Added ${json.added} prospects. Error: ${json.errors[0]}`);
+      const sourceLabel = json.sources?.includes("google_places")
+        ? "Google Places"
+        : json.sources?.includes("openstreetmap")
+        ? "OpenStreetMap"
+        : "";
+      if (json.added > 0) {
+        setCrawlResult(
+          `Added ${json.added} restaurants (${json.emails_found} with email) from ${json.cities?.join(", ")}` +
+            (sourceLabel ? ` · via ${sourceLabel}` : "")
+        );
+      } else if (json.errors?.length) {
+        setCrawlError(true);
+        setCrawlResult(json.errors[0]);
       } else {
-        setCrawlResult(`Added ${json.added} prospects from ${json.cities?.join(", ")}`);
+        setCrawlResult(`No new restaurants found in ${json.cities?.join(", ")} (already crawled).`);
       }
     } catch {
+      setCrawlError(true);
       setCrawlResult("Crawler failed — check network");
     }
     setCrawling(false);
-    setTimeout(() => { setCrawlResult(null); window.location.reload(); }, 4000);
+    setTimeout(() => { window.location.reload(); }, 4000);
   };
 
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,31 +135,28 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
   const handleSendCampaign = async () => {
     if (!subject || !body) return;
     setSending(true);
-
-    // Create campaign
     const res = await fetch("/api/campaigns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: campaignName, subject, body }),
     });
-
     if (res.ok) {
       const { campaign } = await res.json();
-      // Trigger send
       await fetch(`/api/campaigns/${campaign.id}/send`, { method: "POST" });
     }
-
     setSending(false);
     setShowCompose(false);
     window.location.reload();
   };
 
+  const sendableCount = Math.max(stats.withEmail - stats.emailed, 0);
+
   return (
-    <div className="pt-12 px-4 space-y-5">
+    <div className="pt-12 px-4 space-y-5 pb-nav">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">Launch Outreach</h1>
-          <p className="text-xs text-muted-foreground">Email Ontario restaurants</p>
+          <p className="text-xs text-muted-foreground">Find & email Ontario restaurants</p>
         </div>
         <button
           onClick={() => setShowCompose(true)}
@@ -130,8 +186,28 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
       <div className="bg-card border border-border rounded-2xl p-4">
         <p className="text-sm font-semibold text-foreground mb-1">Ontario Restaurant Crawler</p>
         <p className="text-xs text-muted-foreground mb-3">
-          Fetches restaurant names, websites & emails from Google Places across GTA, Mississauga, Brampton, Ottawa, Hamilton, and more.
+          Finds restaurant names, websites, addresses, phones & emails across Ontario. Uses Google
+          Places when available, and automatically falls back to OpenStreetMap (free, no API key) so
+          it always works.
         </p>
+
+        {/* City selector */}
+        <div className="flex gap-2 mb-3">
+          <div className="relative flex-1">
+            <select
+              value={crawlCity}
+              onChange={(e) => setCrawlCity(e.target.value)}
+              className="w-full appearance-none bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground pr-8"
+            >
+              <option value="auto">Daily rotation (3 cities)</option>
+              {ONTARIO_CITIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          </div>
+        </div>
+
         <Button
           onClick={handleCrawl}
           disabled={crawling}
@@ -139,10 +215,10 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
           className="w-full border-border text-foreground"
         >
           <RefreshCw size={14} className={crawling ? "animate-spin" : ""} />
-          {crawling ? "Crawling…" : "Run Crawler Now"}
+          {crawling ? "Crawling… (up to 60s)" : "Run Crawler Now"}
         </Button>
         {crawlResult && (
-          <p className={`text-[11px] mt-2 text-center ${crawlResult.includes("Error") ? "text-red-400" : "text-green-400"}`}>
+          <p className={`text-[11px] mt-2 text-center ${crawlError ? "text-red-400" : "text-green-400"}`}>
             {crawlResult}
           </p>
         )}
@@ -192,7 +268,7 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
         </div>
       </div>
 
-      {/* Prospect list preview */}
+      {/* Prospect list */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -222,30 +298,88 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
             </label>
           </div>
         </div>
-        {importResult && (
-          <p className="text-xs text-green-400 mb-2">{importResult}</p>
+        {importResult && <p className="text-xs text-green-400 mb-2">{importResult}</p>}
+
+        {prospects.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            No prospects yet. Run the crawler above to find restaurants.
+          </div>
         )}
+
         <div className="space-y-2">
-          {prospects.slice(0, 20).map((p: any) => (
-            <div key={p.id} className="bg-card border border-border rounded-2xl p-3 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{p.email ?? "No email found"} · {p.city}</p>
+          {prospects.map((p) => {
+            const isOpen = expanded === p.id;
+            return (
+              <div key={p.id} className="bg-card border border-border rounded-2xl overflow-hidden">
+                <button
+                  onClick={() => setExpanded(isOpen ? null : p.id)}
+                  className="w-full p-3 flex items-center gap-3 text-left"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {p.email ?? "No email found"}{p.city ? ` · ${p.city}` : ""}
+                    </p>
+                  </div>
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+                    style={
+                      p.status === "registered"
+                        ? { backgroundColor: "#052e16", color: "#22c55e" }
+                        : p.status === "emailed"
+                        ? { backgroundColor: "#1e3a5f", color: "#60a5fa" }
+                        : { backgroundColor: "#1E1E1E", color: "#888" }
+                    }
+                  >
+                    {p.status}
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className={`text-muted-foreground flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {isOpen && (
+                  <div className="px-3 pb-3 pt-1 space-y-2 border-t border-border">
+                    {p.email && (
+                      <a href={`mailto:${p.email}`} className="flex items-center gap-2 text-xs text-foreground">
+                        <Mail size={12} className="text-muted-foreground flex-shrink-0" />
+                        <span className="truncate" style={{ color: "#E85D04" }}>{p.email}</span>
+                      </a>
+                    )}
+                    {p.website && (
+                      <a
+                        href={p.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-xs text-foreground"
+                      >
+                        <Globe size={12} className="text-muted-foreground flex-shrink-0" />
+                        <span className="truncate text-blue-400">{p.website.replace(/^https?:\/\//, "")}</span>
+                      </a>
+                    )}
+                    {p.phone && (
+                      <a href={`tel:${p.phone}`} className="flex items-center gap-2 text-xs text-foreground">
+                        <Phone size={12} className="text-muted-foreground flex-shrink-0" />
+                        <span>{p.phone}</span>
+                      </a>
+                    )}
+                    {p.address && (
+                      <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <MapPin size={12} className="flex-shrink-0 mt-0.5" />
+                        <span>{p.address}</span>
+                      </div>
+                    )}
+                    {p.source && (
+                      <p className="text-[10px] text-muted-foreground/70 pt-1">
+                        Source: {p.source === "google_places" ? "Google Places" : p.source === "openstreetmap" ? "OpenStreetMap" : p.source}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0"
-                style={
-                  p.status === "registered"
-                    ? { backgroundColor: "#052e16", color: "#22c55e" }
-                    : p.status === "emailed"
-                    ? { backgroundColor: "#1e3a5f", color: "#60a5fa" }
-                    : { backgroundColor: "#1E1E1E", color: "#888" }
-                }
-              >
-                {p.status}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -261,27 +395,30 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
               <Input value={campaignName} onChange={(e) => setCampaignName(e.target.value)} className="bg-secondary border-border mt-1" />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Subject Line</Label>
+              <Label className="text-xs text-muted-foreground">
+                Subject Line{" "}
+                <span className="font-normal text-muted-foreground/60">— {"{{restaurant_name}}"} is auto-replaced</span>
+              </Label>
               <Input value={subject} onChange={(e) => setSubject(e.target.value)} className="bg-secondary border-border mt-1" />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">
                 Email Body{" "}
                 <span className="font-normal text-muted-foreground/60">
-                  — {"{{restaurant_name}}"} is auto-replaced
+                  — replace [iOS_APP_LINK] / [ANDROID_APP_LINK] before sending
                 </span>
               </Label>
               <Textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                rows={12}
+                rows={16}
                 className="bg-secondary border-border mt-1 resize-none font-mono text-xs"
               />
             </div>
             <div className="bg-secondary rounded-xl p-3">
               <p className="text-xs text-muted-foreground">
-                Will send to <strong className="text-foreground">{stats.withEmail - stats.emailed}</strong> prospects
-                with emails not yet contacted.
+                Will send to <strong className="text-foreground">{sendableCount}</strong> prospects
+                with an email that haven&apos;t been contacted yet.
               </p>
             </div>
             <Button
@@ -291,7 +428,7 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
               style={{ backgroundColor: "#E85D04" }}
             >
               <Send size={14} />
-              {sending ? "Sending…" : `Send to ${stats.withEmail - stats.emailed} Restaurants`}
+              {sending ? "Sending…" : `Send to ${sendableCount} Restaurants`}
             </Button>
           </div>
         </DialogContent>

@@ -23,8 +23,8 @@ import {
 import type { SupportTicket, SupportMessage, QuickReplyTemplate } from "@/types";
 
 const PORTAL_COLORS: Record<string, string> = {
-  customer: "#3b82f6",
-  restaurant: "#065F46",
+  customer: "#E85D04",
+  restaurant: "#3b82f6",
   creator: "#7E22CE",
 };
 const STATUS_NEXT: Record<string, string> = {

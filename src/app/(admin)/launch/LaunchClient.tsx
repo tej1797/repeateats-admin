@@ -37,14 +37,26 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
   const [body, setBody] = useState(DEFAULT_TEMPLATE);
   const [sending, setSending] = useState(false);
   const [crawling, setCrawling] = useState(false);
+  const [crawlResult, setCrawlResult] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
 
   const handleCrawl = async () => {
     setCrawling(true);
-    await fetch("/api/cron/crawl-restaurants", { method: "POST" });
+    setCrawlResult(null);
+    try {
+      const res = await fetch("/api/cron/crawl-restaurants", { method: "POST" });
+      const json = await res.json();
+      if (json.errors?.length > 0) {
+        setCrawlResult(`Added ${json.added} prospects. Error: ${json.errors[0]}`);
+      } else {
+        setCrawlResult(`Added ${json.added} prospects from ${json.cities?.join(", ")}`);
+      }
+    } catch {
+      setCrawlResult("Crawler failed — check network");
+    }
     setCrawling(false);
-    window.location.reload();
+    setTimeout(() => { setCrawlResult(null); window.location.reload(); }, 4000);
   };
 
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,9 +141,16 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
           <RefreshCw size={14} className={crawling ? "animate-spin" : ""} />
           {crawling ? "Crawling…" : "Run Crawler Now"}
         </Button>
-        <p className="text-[10px] text-muted-foreground mt-2 text-center">
-          Also runs automatically daily via Vercel Cron
-        </p>
+        {crawlResult && (
+          <p className={`text-[11px] mt-2 text-center ${crawlResult.includes("Error") ? "text-red-400" : "text-green-400"}`}>
+            {crawlResult}
+          </p>
+        )}
+        {!crawlResult && (
+          <p className="text-[10px] text-muted-foreground mt-2 text-center">
+            Also runs automatically daily via Vercel Cron
+          </p>
+        )}
       </div>
 
       {/* Past campaigns */}

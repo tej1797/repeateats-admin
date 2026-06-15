@@ -15,7 +15,9 @@ export async function POST(request: Request) {
     .from("support_messages")
     .insert({
       ticket_id,
-      message,
+      content: message,             // old NOT NULL column — keep for compat
+      is_admin: sender_type === "admin", // old boolean column
+      message,                      // new column
       is_internal_note: is_internal_note ?? false,
       sender_type: sender_type ?? "admin",
       read_by_admin: sender_type === "admin" ? true : false,

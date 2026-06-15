@@ -18,9 +18,9 @@ export default async function CustomerDetailPage({
     admin.from("users").select("*").eq("id", id).single(),
     admin
       .from("claims")
-      .select("*, deals(title, emoji, restaurants(name))")
+      .select("id, deal_id, status, claimed_at, redeemed_at")
       .eq("user_id", id)
-      .order("created_at", { ascending: false })
+      .order("claimed_at", { ascending: false })
       .limit(50),
     admin
       .from("support_tickets")
@@ -32,9 +32,33 @@ export default async function CustomerDetailPage({
 
   if (!userRes.data) notFound();
   const user = userRes.data;
-  const claims = claimsRes.data ?? [];
+  const rawClaims = claimsRes.data ?? [];
   const tickets = ticketsRes.data ?? [];
-  const redeemed = claims.filter((c: any) => c.status === "redeemed").length;
+  const redeemed = rawClaims.filter((c: any) => c.status === "redeemed").length;
+
+  // Fetch deal + restaurant info separately (avoids PostgREST deep-join issues)
+  const dealIds = [...new Set(rawClaims.map((c: any) => c.deal_id).filter(Boolean))];
+  let dealsMap: Record<string, any> = {};
+  if (dealIds.length > 0) {
+    const { data: dealsData } = await admin
+      .from("deals")
+      .select("id, title, emoji, restaurant_id")
+      .in("id", dealIds);
+    const restaurantIds = [...new Set((dealsData ?? []).map((d: any) => d.restaurant_id).filter(Boolean))];
+    let restaurantsMap: Record<string, string> = {};
+    if (restaurantIds.length > 0) {
+      const { data: rData } = await admin.from("restaurants").select("id, name").in("id", restaurantIds);
+      (rData ?? []).forEach((r: any) => { restaurantsMap[r.id] = r.name; });
+    }
+    (dealsData ?? []).forEach((d: any) => {
+      dealsMap[d.id] = { ...d, restaurant_name: restaurantsMap[d.restaurant_id] ?? "—" };
+    });
+  }
+
+  const claims = rawClaims.map((c: any) => ({
+    ...c,
+    deals: dealsMap[c.deal_id] ?? null,
+  }));
 
   return (
     <div className="pt-12 px-4 pb-nav space-y-5">
@@ -99,10 +123,10 @@ export default async function CustomerDetailPage({
                   {c.deals?.emoji ?? "🍽️"} {c.deals?.title ?? "Unknown deal"}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
-                  {c.deals?.restaurants?.name ?? "—"}
+                  {c.deals?.restaurant_name ?? "—"}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {format(new Date(c.created_at), "MMM d, yyyy")}
+                  {c.claimed_at ? format(new Date(c.claimed_at), "MMM d, yyyy") : "—"}
                 </p>
               </div>
               <div className="flex-shrink-0">

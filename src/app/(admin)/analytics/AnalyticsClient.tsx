@@ -371,45 +371,50 @@ function RestaurantDrillDown({ restaurant, deals }: { restaurant: any; deals: an
 
       <div className="space-y-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Deal Breakdown</p>
-        {deals.map((d) => {
-          const dr = d.total_claims > 0 ? Math.round((d.total_redeems / d.total_claims) * 100) : 0;
-          return (
-            <div key={d.id} className="bg-card border border-border rounded-2xl p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground">
-                    {d.emoji ?? "🍽️"} {d.title}
-                  </p>
-                  <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-xs" style={{ color: "#E85D04" }}>{d.total_claims} claimed</span>
-                    <span className="text-xs text-green-400">{d.total_redeems} redeemed</span>
+        {(() => {
+          const maxClaims = Math.max(...deals.map((d) => d.total_claims), 1);
+          return deals.map((d) => {
+            const dr = d.total_claims > 0 ? Math.round((d.total_redeems / d.total_claims) * 100) : 0;
+            const claimPct = Math.round((d.total_claims / maxClaims) * 100);
+            const redeemPct = Math.round((d.total_redeems / maxClaims) * 100);
+            return (
+              <div key={d.id} className="bg-card border border-border rounded-2xl p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">
+                      {d.emoji ?? "🍽️"} {d.title}
+                    </p>
+                    <div className="flex items-center gap-3 mt-1.5">
+                      <span className="text-xs" style={{ color: "#E85D04" }}>{d.total_claims} claimed</span>
+                      <span className="text-xs text-green-400">{d.total_redeems} redeemed</span>
+                    </div>
+                  </div>
+                  <span className="text-sm font-bold flex-shrink-0" style={{ color: dr >= 60 ? "#22c55e" : dr >= 40 ? "#f59e0b" : "#ef4444" }}>
+                    {dr}%
+                  </span>
+                </div>
+                <div className="space-y-1 mt-2">
+                  <div>
+                    <div className="flex justify-between text-[9px] text-muted-foreground mb-0.5">
+                      <span>Claims</span><span>{d.total_claims}</span>
+                    </div>
+                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${claimPct}%`, backgroundColor: "#E85D04" }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[9px] text-muted-foreground mb-0.5">
+                      <span>Redeems</span><span>{d.total_redeems}</span>
+                    </div>
+                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${redeemPct}%`, backgroundColor: "#22c55e" }} />
+                    </div>
                   </div>
                 </div>
-                <span className="text-sm font-bold flex-shrink-0" style={{ color: dr >= 60 ? "#22c55e" : dr >= 40 ? "#f59e0b" : "#ef4444" }}>
-                  {dr}%
-                </span>
               </div>
-              <div className="space-y-1 mt-2">
-                <div>
-                  <div className="flex justify-between text-[9px] text-muted-foreground mb-0.5">
-                    <span>Claims</span><span>{d.total_claims}</span>
-                  </div>
-                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                    <div className="h-full rounded-full w-full" style={{ backgroundColor: "#E85D04" }} />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-[9px] text-muted-foreground mb-0.5">
-                    <span>Redeems</span><span>{d.total_redeems}</span>
-                  </div>
-                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${dr}%`, backgroundColor: "#22c55e" }} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
       </div>
       <div className="h-2" />
     </div>

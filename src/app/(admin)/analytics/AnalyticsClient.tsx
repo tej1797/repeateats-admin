@@ -389,8 +389,23 @@ function RestaurantDrillDown({ restaurant, deals }: { restaurant: any; deals: an
                   {dr}%
                 </span>
               </div>
-              <div className="h-1.5 bg-secondary rounded-full mt-2 overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${dr}%`, backgroundColor: dr >= 60 ? "#22c55e" : "#f59e0b" }} />
+              <div className="space-y-1 mt-2">
+                <div>
+                  <div className="flex justify-between text-[9px] text-muted-foreground mb-0.5">
+                    <span>Claims</span><span>{d.total_claims}</span>
+                  </div>
+                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                    <div className="h-full rounded-full w-full" style={{ backgroundColor: "#E85D04" }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-[9px] text-muted-foreground mb-0.5">
+                    <span>Redeems</span><span>{d.total_redeems}</span>
+                  </div>
+                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${dr}%`, backgroundColor: "#22c55e" }} />
+                  </div>
+                </div>
               </div>
             </div>
           );

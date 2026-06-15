@@ -146,7 +146,7 @@ export function AnalyticsClient(props: Props) {
                 data={chartData}
                 margin={{ top: 4, right: 4, left: -24, bottom: 0 }}
                 style={{ background: "transparent" }}
-                onClick={(data) => {
+                onClick={(data: any) => {
                   if (data?.activePayload?.[0]?.payload?.id) {
                     router.push(`/analytics?view=restaurant&restaurantId=${data.activePayload[0].payload.id}`);
                   }

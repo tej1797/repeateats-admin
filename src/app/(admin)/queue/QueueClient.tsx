@@ -13,7 +13,7 @@ const PORTAL_LABELS: Record<string, string> = {
 const PORTAL_COLORS: Record<string, string> = {
   customer: "#E85D04",   // orange
   restaurant: "#3b82f6", // blue
-  creator: "#f59e0b",    // yellow
+  creator: "#7E22CE",    // purple
 };
 const CATEGORY_LABELS: Record<string, string> = {
   claim_issue: "Claim",

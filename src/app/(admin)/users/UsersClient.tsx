@@ -15,9 +15,9 @@ type Props = {
 };
 
 const TABS = [
-  { id: "customers", label: "Customers", icon: Users },
-  { id: "restaurants", label: "Restaurants", icon: Store },
-  { id: "creators", label: "Creators", icon: Star },
+  { id: "customers", label: "Customers", icon: Users, color: "#E85D04" },
+  { id: "restaurants", label: "Restaurants", icon: Store, color: "#3b82f6" },
+  { id: "creators", label: "Creators", icon: Star, color: "#7E22CE" },
 ];
 
 export function UsersClient({ customers, restaurants, creators, activeTab, query }: Props) {
@@ -51,14 +51,14 @@ export function UsersClient({ customers, restaurants, creators, activeTab, query
 
       {/* Tab buttons */}
       <div className="flex gap-0 px-4 mb-4 bg-secondary rounded-xl mx-4 p-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {TABS.map(({ id, label, icon: Icon, color }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors"
             style={
               activeTab === id
-                ? { backgroundColor: "#E85D04", color: "#fff" }
+                ? { backgroundColor: color, color: "#fff" }
                 : { color: "#888" }
             }
           >

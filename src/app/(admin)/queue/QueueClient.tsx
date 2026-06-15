@@ -32,10 +32,10 @@ const STATUS_OPTIONS = [
   { value: "all", label: "All" },
 ];
 const PORTAL_OPTIONS = [
-  { value: "all", label: "All" },
-  { value: "customer", label: "Customer" },
-  { value: "restaurant", label: "Restaurant" },
-  { value: "creator", label: "Creator" },
+  { value: "all", label: "All", activeColor: "#E85D04" },
+  { value: "customer", label: "Customer", activeColor: "#E85D04" },
+  { value: "restaurant", label: "Restaurant", activeColor: "#3b82f6" },
+  { value: "creator", label: "Creator", activeColor: "#7E22CE" },
 ];
 const CATEGORY_OPTIONS = [
   { value: "all", label: "All" },
@@ -101,14 +101,14 @@ export function QueueClient({ tickets, activeFilters }: Props) {
         </div>
 
         <div className="flex gap-2 px-4 overflow-x-auto no-scrollbar">
-          {PORTAL_OPTIONS.map(({ value, label }) => (
+          {PORTAL_OPTIONS.map(({ value, label, activeColor }) => (
             <button
               key={value}
               onClick={() => setFilter("portal", value)}
               className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
               style={
                 currentPortal === value
-                  ? { backgroundColor: "#1E1E1E", color: "#F0F0F0", border: "1px solid #E85D04" }
+                  ? { backgroundColor: "#1E1E1E", color: "#F0F0F0", border: `1px solid ${activeColor}` }
                   : { backgroundColor: "#1E1E1E", color: "#888", border: "1px solid transparent" }
               }
             >

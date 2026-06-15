@@ -12,23 +12,13 @@ export default async function UsersPage({
   const admin = createAdminClient();
 
   const [customersRes, restaurantsRes, creatorsRes] = await Promise.all([
-    admin
-      .from("users")
-      .select("*, claims(id, status)")
-      .ilike(q ? "name" : "id", q ? `%${q}%` : "%")
-      .order("name", { ascending: true })
-      .limit(50),
-    admin
-      .from("restaurants")
-      .select("*, deals(id, current_claims)")
-      .ilike(q ? "name" : "id", q ? `%${q}%` : "%")
-      .order("name", { ascending: true })
-      .limit(50),
-    admin
-      .from("influencers")
-      .select("*, users(name, email, created_at)")
-      .order("created_at", { ascending: false })
-      .limit(50),
+    q
+      ? admin.from("users").select("*, claims(id, status)").or(`name.ilike.%${q}%,email.ilike.%${q}%`).order("name", { ascending: true }).limit(100)
+      : admin.from("users").select("*, claims(id, status)").order("name", { ascending: true }).limit(100),
+    q
+      ? admin.from("restaurants").select("*, deals(id, current_claims)").ilike("name", `%${q}%`).order("name", { ascending: true }).limit(100)
+      : admin.from("restaurants").select("*, deals(id, current_claims)").order("name", { ascending: true }).limit(100),
+    admin.from("influencers").select("*, users(name, email, created_at)").order("created_at", { ascending: false }).limit(100),
   ]);
 
   return (

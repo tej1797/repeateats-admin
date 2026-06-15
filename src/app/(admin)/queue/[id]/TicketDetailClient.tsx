@@ -91,22 +91,34 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
   }, [messages]);
 
   const sendReply = async () => {
-    if (!reply.trim()) return;
+    const text = reply.trim();
+    if (!text) return;
     setSending(true);
-    await fetch("/api/tickets/messages", {
+    setReply(""); // clear immediately for UX
+
+    const res = await fetch("/api/tickets/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ticket_id: ticket.id,
-        message: reply.trim(),
+        message: text,
         is_internal_note: isNote,
         sender_type: "admin",
       }),
     });
-    setReply("");
+
+    if (res.ok) {
+      const { message: newMsg } = await res.json();
+      // Add immediately (don't rely solely on Realtime subscription)
+      setMessages((prev) => {
+        const exists = prev.some((m) => m.id === newMsg.id);
+        return exists ? prev : [...prev, newMsg];
+      });
+    }
+
     setSending(false);
 
-    // Update first_response_at if this is the first admin reply
+    // Record first admin response time
     if (!ticket.first_response_at && !isNote) {
       const updated = await fetch(`/api/tickets/${ticket.id}`, {
         method: "PATCH",
@@ -252,7 +264,7 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
           return (
             <div key={msg.id} className={`flex ${isAdmin ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                className={`max-w-[62%] rounded-2xl px-3 py-2 ${
                   isNote
                     ? "border border-dashed border-yellow-600/50 bg-yellow-950/20"
                     : isAdmin
@@ -271,9 +283,9 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
                     Internal note
                   </div>
                 )}
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.message}</p>
+                <p className="text-xs leading-relaxed whitespace-pre-wrap">{msg.message}</p>
                 <p
-                  className={`text-[10px] mt-1 ${
+                  className={`text-[10px] mt-0.5 ${
                     isAdmin && !isNote ? "text-white/60" : "text-muted-foreground"
                   }`}
                 >
@@ -324,7 +336,10 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
             rows={2}
             className="flex-1 resize-none bg-secondary border-border text-sm rounded-xl"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply();
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendReply();
+              }
             }}
           />
           <button

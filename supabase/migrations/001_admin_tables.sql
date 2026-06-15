@@ -33,6 +33,7 @@ begin
 end;
 $$;
 
+drop trigger if exists support_tickets_updated_at on public.support_tickets;
 create trigger support_tickets_updated_at
   before update on public.support_tickets
   for each row execute procedure public.update_updated_at();

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Instagram, Calendar, TrendingUp } from "lucide-react";
+import { ArrowLeft, AtSign, Calendar, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +61,7 @@ export default async function CreatorDetailPage({
         )}
         {(inf.instagram_handle || inf.tiktok_handle) && (
           <div className="flex items-center gap-2 text-sm text-foreground">
-            <Instagram size={14} className="text-muted-foreground" />
+            <AtSign size={14} className="text-muted-foreground" />
             <span>
               {[inf.instagram_handle && `@${inf.instagram_handle}`, inf.tiktok_handle && `@${inf.tiktok_handle}`]
                 .filter(Boolean)

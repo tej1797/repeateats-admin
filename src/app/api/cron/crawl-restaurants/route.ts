@@ -179,29 +179,37 @@ const OVERPASS_MIRRORS = [
 ];
 
 async function overpassFetch(query: string): Promise<any | null> {
+  // Try each mirror, with one retry per mirror — Overpass returns transient
+  // 406/429s under load that usually clear within a couple seconds.
   for (const endpoint of OVERPASS_MIRRORS) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 55000);
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
-        },
-        body: `data=${encodeURIComponent(query)}`,
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (!res.ok) continue; // 429/406/5xx → try next mirror
-      const text = await res.text();
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return JSON.parse(text);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 55000);
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            // Accept header is REQUIRED — Overpass returns 406 without it.
+            Accept: "application/json",
+            "User-Agent": "RepeatEatsBot/1.0 (+https://repeateats.ca)",
+          },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (res.ok) {
+          const text = await res.text();
+          try {
+            return JSON.parse(text);
+          } catch {
+            /* HTML error page — fall through to retry/next mirror */
+          }
+        }
       } catch {
-        continue; // rate-limit HTML page → try next mirror
+        /* timeout/network — fall through to retry/next mirror */
       }
-    } catch {
-      continue; // timeout/network → try next mirror
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
     }
   }
   return null;
@@ -315,6 +323,8 @@ export async function POST(request: Request) {
 
   const sourcesUsed = new Set<string>();
 
+  // ---- Phase 1: discover + insert prospects FAST (so data is saved even
+  //      if email scraping later times out) ----
   for (const city of citiesToProcess) {
     // Try Google Places first (richer data) — fall back to free OSM on any failure.
     let leads: Lead[] = [];
@@ -333,49 +343,29 @@ export async function POST(request: Request) {
       sourcesUsed.add("openstreetmap");
     }
 
-    // Dedupe against existing prospects (by place id, website, or name+city).
-    const newLeads: Lead[] = [];
-    for (const lead of leads) {
-      let exists = null;
-      if (lead.google_place_id) {
-        const { data } = await admin
-          .from("email_prospects")
-          .select("id")
-          .eq("google_place_id", lead.google_place_id)
-          .maybeSingle();
-        exists = data;
-      }
-      if (!exists && lead.website) {
-        const { data } = await admin
-          .from("email_prospects")
-          .select("id")
-          .eq("website", lead.website)
-          .maybeSingle();
-        exists = data;
-      }
-      if (!exists) {
-        const { data } = await admin
-          .from("email_prospects")
-          .select("id")
-          .eq("name", lead.name)
-          .eq("city", city)
-          .maybeSingle();
-        exists = data;
-      }
-      if (!exists) newLeads.push(lead);
-    }
+    if (leads.length === 0) continue;
 
-    // Scrape emails for leads that have a website but no email yet (limited concurrency).
-    const needScrape = newLeads.filter((l) => l.website && !l.email);
-    await mapLimit(needScrape, 6, async (lead) => {
-      const email = await scrapeEmail(lead.website!);
-      if (email) {
-        lead.email = email;
-        emailsFound++;
-      }
+    // Fast in-memory dedupe: pull existing keys for this city in one query.
+    const { data: existing } = await admin
+      .from("email_prospects")
+      .select("name, website, google_place_id")
+      .eq("city", city);
+    const existingNames = new Set((existing ?? []).map((e) => (e.name ?? "").toLowerCase()));
+    const existingSites = new Set((existing ?? []).map((e) => e.website).filter(Boolean));
+    const existingPlaceIds = new Set((existing ?? []).map((e) => e.google_place_id).filter(Boolean));
+
+    const seen = new Set<string>();
+    const newLeads = leads.filter((l) => {
+      if (l.google_place_id && existingPlaceIds.has(l.google_place_id)) return false;
+      if (l.website && existingSites.has(l.website)) return false;
+      if (existingNames.has(l.name.toLowerCase())) return false;
+      // also dedupe within this batch
+      const key = l.website || `${l.name.toLowerCase()}|${city}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 
-    // Insert the new prospects.
     if (newLeads.length > 0) {
       const rows = newLeads.map((l) => ({
         name: l.name,
@@ -390,13 +380,42 @@ export async function POST(request: Request) {
       }));
       const { error } = await admin.from("email_prospects").insert(rows);
       if (error) errors.push(`${city}: insert failed — ${error.message}`);
-      else totalAdded += rows.length;
+      else {
+        totalAdded += rows.length;
+        emailsFound += newLeads.filter((l) => l.email).length; // emails already in source tags
+      }
     }
+  }
+
+  // ---- Phase 2: enrich emails for prospects that have a website but no email.
+  //      Bounded so the request stays well within the timeout. Runs across the
+  //      whole table, so repeated crawls keep filling in more emails. ----
+  const SCRAPE_BUDGET = 60;
+  const { data: toEnrich } = await admin
+    .from("email_prospects")
+    .select("id, website")
+    .is("email", null)
+    .not("website", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(SCRAPE_BUDGET);
+
+  if (toEnrich && toEnrich.length > 0) {
+    await mapLimit(toEnrich, 8, async (row: any) => {
+      const email = await scrapeEmail(row.website);
+      if (email) {
+        const { error } = await admin
+          .from("email_prospects")
+          .update({ email })
+          .eq("id", row.id);
+        if (!error) emailsFound++;
+      }
+    });
   }
 
   return NextResponse.json({
     added: totalAdded,
     emails_found: emailsFound,
+    enriched_scanned: toEnrich?.length ?? 0,
     cities: citiesToProcess,
     sources: [...sourcesUsed],
     errors,

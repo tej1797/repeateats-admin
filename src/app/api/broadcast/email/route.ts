@@ -64,16 +64,16 @@ export async function POST(request: Request) {
   // HTML template for promo emails
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;background:#fff">
-      <div style="background:#E85D04;padding:20px 24px;border-radius:12px 12px 0 0">
-        <p style="color:#fff;font-size:18px;font-weight:700;margin:0">RepeatEats</p>
+      <div style="background:#1d4ed8;padding:22px 24px;border-radius:12px 12px 0 0">
+        <p style="font-size:22px;font-weight:800;margin:0;letter-spacing:.5px"><span style="color:#fff">Rep</span><span style="color:#E85D04">EAT</span></p>
       </div>
       <div style="padding:28px 24px;border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px">
         <h2 style="font-size:18px;color:#111;margin:0 0 16px">${subject.replace(/</g, "&lt;")}</h2>
         ${body.split("\n").map((l: string) => `<p style="font-size:14px;color:#333;margin:0 0 10px">${l.replace(/</g, "&lt;") || "&nbsp;"}</p>`).join("")}
         <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>
         <p style="color:#999;font-size:11px;margin:0">
-          RepeatEats · GTA, Ontario<br/>
-          <a href="mailto:support@repeateats.ca" style="color:#E85D04">support@repeateats.ca</a>
+          RepEAT Inc · Ontario, Canada<br/>
+          <a href="mailto:contact@contact.repeateats.ca" style="color:#1d4ed8">contact@contact.repeateats.ca</a>
         </p>
       </div>
     </div>`;

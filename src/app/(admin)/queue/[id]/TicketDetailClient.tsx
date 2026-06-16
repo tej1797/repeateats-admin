@@ -64,6 +64,7 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
   const [emailSubject, setEmailSubject] = useState(`Re: ${initialTicket.subject}`);
   const [emailBody, setEmailBody] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailResult, setEmailResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const buildConversationText = (msgs: SupportMessage[]) => {
     const visible = msgs.filter((m) => !m.is_internal_note);
@@ -89,6 +90,7 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
   const openEmailDialog = () => {
     setEmailBody(buildConversationText(messages));
     setEmailSubject(`Re: ${ticket.subject}`);
+    setEmailResult(null);
     setShowEmail(true);
   };
 
@@ -190,31 +192,39 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
   const sendEmail = async () => {
     if (!emailBody.trim()) return;
     setSendingEmail(true);
-    const res = await fetch("/api/tickets/send-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ticket_id: ticket.id,
-        to_email: ticket.user_email,
-        subject: emailSubject,
-        body: emailBody,
-        // Pass structured messages so the API can build a nice HTML thread
-        messages: messages
-          .filter((m) => !m.is_internal_note)
-          .map((m) => ({
-            sender_type: m.sender_type,
-            message: m.message ?? "",
-            created_at: m.created_at,
-          })),
-        user_name: ticket.user_name ?? "there",
-        portal: ticket.portal,
-      }),
-    });
-    setSendingEmail(false);
-    if (res.ok) {
-      setShowEmail(false);
-      setEmailBody("");
+    setEmailResult(null);
+    try {
+      const res = await fetch("/api/tickets/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticket_id: ticket.id,
+          to_email: ticket.user_email,
+          subject: emailSubject,
+          body: emailBody,
+          // Pass structured messages so the API can build a nice HTML thread
+          messages: messages
+            .filter((m) => !m.is_internal_note)
+            .map((m) => ({
+              sender_type: m.sender_type,
+              message: m.message ?? "",
+              created_at: m.created_at,
+            })),
+          user_name: ticket.user_name ?? "there",
+          portal: ticket.portal,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setEmailResult({ ok: true, msg: `Email sent to ${ticket.user_email} ✓` });
+        setTimeout(() => { setShowEmail(false); setEmailResult(null); }, 1800);
+      } else {
+        setEmailResult({ ok: false, msg: json.error ?? "Failed to send — please try again." });
+      }
+    } catch {
+      setEmailResult({ ok: false, msg: "Network error — please try again." });
     }
+    setSendingEmail(false);
   };
 
   const applyTemplate = (t: QuickReplyTemplate) => {
@@ -414,13 +424,15 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
         </DialogContent>
       </Dialog>
 
-      {/* Email composer */}
+      {/* Email composer — capped height, scrollable body, sticky footer */}
       <Dialog open={showEmail} onOpenChange={setShowEmail}>
-        <DialogContent className="bg-card border-border">
-          <DialogHeader>
+        <DialogContent className="bg-card border-border max-h-[88vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-5 pt-5 pb-3 flex-shrink-0 border-b border-border">
             <DialogTitle>Send Conversation to {ticket.user_name ?? ticket.user_email}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 mt-2">
+
+          {/* Scrollable body */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
             <div>
               <Label className="text-xs text-muted-foreground">To</Label>
               <Input value={ticket.user_email} disabled className="bg-secondary border-border mt-1" />
@@ -438,18 +450,27 @@ export function TicketDetailClient({ ticket: initialTicket, messages: initialMes
               <Textarea
                 value={emailBody}
                 onChange={(e) => setEmailBody(e.target.value)}
-                rows={6}
+                rows={10}
                 placeholder="Write your email…"
                 className="bg-secondary border-border mt-1 resize-none"
               />
             </div>
+          </div>
+
+          {/* Sticky footer */}
+          <div className="px-5 py-4 flex-shrink-0 border-t border-border space-y-2">
+            {emailResult && (
+              <p className={`text-xs ${emailResult.ok ? "text-green-400" : "text-red-400"}`}>
+                {emailResult.msg}
+              </p>
+            )}
             <Button
               onClick={sendEmail}
               disabled={sendingEmail || !emailBody.trim()}
-              className="w-full font-semibold"
-              style={{ backgroundColor: "#E85D04" }}
+              className="w-full font-semibold text-white"
+              style={{ backgroundColor: portalColor }}
             >
-              {sendingEmail ? "Sending…" : "Send Email"}
+              {sendingEmail ? "Sending…" : `Send Email to ${ticket.user_email}`}
             </Button>
           </div>
         </DialogContent>

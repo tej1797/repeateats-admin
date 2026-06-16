@@ -84,8 +84,9 @@ export async function POST(request: Request) {
       }).join("\n\n")
     : (emailBody ?? "");
 
+  const from = process.env.RESEND_FROM ?? "Tejas @ RepeatEats <support@repeateats.ca>";
   const { error: sendError } = await resend.emails.send({
-    from: "Tejas @ RepeatEats <support@repeateats.ca>",
+    from,
     to: to_email,
     subject,
     text,
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
   });
 
   if (sendError) {
+    console.error("[send-email] Resend error:", sendError);
     return NextResponse.json({ error: sendError.message }, { status: 500 });
   }
 

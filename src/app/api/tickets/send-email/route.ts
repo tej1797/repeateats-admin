@@ -21,6 +21,18 @@ function buildHtml(
   const accent = PORTAL_COLORS[portal] ?? "#E85D04";
   const shortId = ticketId.split("-")[0].toUpperCase();
 
+  // WhatsApp CTA — only rendered when a support number is configured.
+  const waNumber = (process.env.SUPPORT_WHATSAPP_NUMBER ?? "").replace(/[^0-9]/g, "");
+  const whatsappBlock = waNumber
+    ? `
+        <div style="text-align:center;margin:26px 0 0">
+          <p style="font-size:13px;color:#9aa0a6;line-height:1.5;margin:0 0 12px">Have more issues? Chat with us on WhatsApp.</p>
+          <a href="https://wa.me/${waNumber}" style="display:inline-block;background:#25D366;color:#fff;font-size:14px;font-weight:600;text-decoration:none;padding:11px 20px;border-radius:24px">
+            <img src="https://img.icons8.com/ios-filled/24/ffffff/whatsapp.png" width="16" height="16" alt="WhatsApp" style="vertical-align:-3px;margin-right:8px"/>Chat on WhatsApp
+          </a>
+        </div>`
+    : "";
+
   const cards = messages.length > 0
     ? messages.map((m) => {
         const isAdmin = m.sender_type === "admin";
@@ -51,9 +63,7 @@ function buildHtml(
         <h1 style="font-size:21px;font-weight:700;color:#ffffff;margin:0 0 6px">Your support conversation</h1>
         <p style="font-size:13px;color:#9aa0a6;margin:0 0 22px">Ticket <span style="color:#cfcfcf;font-weight:600">#${shortId}</span> · ${esc(subject)}</p>
         ${cards}
-        <p style="font-size:13px;color:#9aa0a6;line-height:1.5;margin:22px 0 0">
-          Reply to this email to continue the conversation. For immediate assistance, you can also reach us on WhatsApp.
-        </p>
+        ${whatsappBlock}
         <hr style="border:none;border-top:1px solid #262626;margin:24px 0"/>
         <p style="color:#6b7177;font-size:11px;line-height:1.7;margin:0;text-align:center">
           RepEAT Inc · Ontario, Canada<br/>

@@ -42,14 +42,14 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
 
-  // Fetch target push tokens
-  let users: { id: string; expo_push_token: string }[] = [];
+  // Fetch ALL target users for the audience (token may be null — those still
+  // get an in-app notification, just no push banner).
+  let users: { id: string; expo_push_token: string | null }[] = [];
 
   if (audience === "customers") {
     const { data } = await admin
       .from("users")
       .select("id, expo_push_token")
-      .not("expo_push_token", "is", null)
       .not("role", "eq", "restaurant");
     users = (data ?? []) as typeof users;
   } else if (audience === "restaurants") {
@@ -57,39 +57,28 @@ export async function POST(request: Request) {
       .from("restaurants")
       .select("owner_id")
       .not("owner_id", "is", null);
-    const ownerIds = (owners ?? []).map((r) => r.owner_id);
+    const ownerIds = [...new Set((owners ?? []).map((r) => r.owner_id))];
     if (ownerIds.length === 0) {
-      return NextResponse.json({ sent: 0, failed: 0, in_app: 0, skipped: "no restaurant owners" });
+      return NextResponse.json({ sent: 0, failed: 0, in_app: 0, total_users: 0, skipped: "no restaurant owners" });
     }
-    const { data } = await admin
-      .from("users")
-      .select("id, expo_push_token")
-      .not("expo_push_token", "is", null)
-      .in("id", ownerIds);
+    const { data } = await admin.from("users").select("id, expo_push_token").in("id", ownerIds);
     users = (data ?? []) as typeof users;
   } else if (audience === "creators") {
     const { data: infl } = await admin
       .from("influencers")
       .select("user_id")
       .not("user_id", "is", null);
-    const creatorIds = (infl ?? []).map((i) => i.user_id);
+    const creatorIds = [...new Set((infl ?? []).map((i) => i.user_id))];
     if (creatorIds.length === 0) {
-      return NextResponse.json({ sent: 0, failed: 0, in_app: 0, skipped: "no creators" });
+      return NextResponse.json({ sent: 0, failed: 0, in_app: 0, total_users: 0, skipped: "no creators" });
     }
-    const { data } = await admin
-      .from("users")
-      .select("id, expo_push_token")
-      .not("expo_push_token", "is", null)
-      .in("id", creatorIds);
+    const { data } = await admin.from("users").select("id, expo_push_token").in("id", creatorIds);
     users = (data ?? []) as typeof users;
   } else {
-    const { data } = await admin
-      .from("users")
-      .select("id, expo_push_token")
-      .not("expo_push_token", "is", null);
+    const { data } = await admin.from("users").select("id, expo_push_token");
     users = (data ?? []) as typeof users;
   }
-  const tokens = (users ?? []).map((u) => u.expo_push_token).filter(Boolean);
+  const tokens = users.map((u) => u.expo_push_token).filter(Boolean) as string[];
 
   // Send push
   const { sent, failed } = await sendExpoPush(tokens, title, body, data);

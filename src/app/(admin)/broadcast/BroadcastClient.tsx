@@ -33,16 +33,57 @@ const AUDIENCE_OPTIONS: { key: AudienceKey; label: string; icon: any }[] = [
   { key: "all", label: "Everyone", icon: Zap },
 ];
 
-const PUSH_TEMPLATES = [
-  { label: "New deal alert", title: "🔥 New Deal Just Dropped!", body: "Check out the latest exclusive deals near you on RepeatEats." },
-  { label: "Weekend promo", title: "🍽️ Weekend Eats!", body: "Exclusive weekend deals are live. Claim yours before they're gone!" },
-  { label: "Re-engage", title: "We miss you! 👋", body: "It's been a while — new restaurants have joined RepeatEats. Come explore!" },
-];
+// Portal colors: customer=orange, restaurant=blue, creator=purple, everyone=yellow
+const PORTAL_COLORS: Record<AudienceKey, string> = {
+  customers: "#E85D04",
+  restaurants: "#3b82f6",
+  creators: "#7E22CE",
+  all: "#eab308",
+};
 
-const EMAIL_TEMPLATES = [
-  { label: "New feature", subject: "Exciting new features on RepeatEats 🚀", body: "Hi there,\n\nWe've been busy building new features to make RepeatEats even better for you.\n\nCheck out what's new in the app today!\n\nBest,\nTejas\nFounder, RepeatEats" },
-  { label: "Restaurant welcome", subject: "Welcome to RepeatEats! Here's how to get started 🍽️", body: "Hi there,\n\nThank you for joining RepeatEats! We're excited to help you attract new customers.\n\nHere's how to get started:\n1. Add your first deal\n2. Go live on the platform\n3. Watch customers discover you\n\nNeed help? Reply to this email.\n\nBest,\nTejas\nFounder, RepeatEats" },
-];
+type PushTpl = { label: string; title: string; body: string };
+type EmailTpl = { label: string; subject: string; body: string };
+
+// Quick templates tailored to each audience
+const PUSH_TEMPLATES: Record<AudienceKey, PushTpl[]> = {
+  customers: [
+    { label: "New deal alert", title: "🔥 New Deal Just Dropped!", body: "Check out the latest exclusive deals near you on RepeatEats." },
+    { label: "Weekend promo", title: "🍽️ Weekend Eats!", body: "Exclusive weekend deals are live. Claim yours before they're gone!" },
+    { label: "Re-engage", title: "We miss you! 👋", body: "It's been a while — new restaurants just joined RepeatEats. Come explore!" },
+  ],
+  restaurants: [
+    { label: "Add a deal", title: "📈 Reach more diners", body: "Post a deal on RepeatEats and get discovered by hungry customers nearby." },
+    { label: "Weekend boost", title: "🍽️ Fill your weekend", body: "Diners are searching now — add a weekend deal to bring in more covers." },
+    { label: "Performance", title: "📊 Your week on RepeatEats", body: "New customers discovered you this week. Open your dashboard to see the numbers." },
+  ],
+  creators: [
+    { label: "New collab", title: "🤝 New collab available", body: "A restaurant is looking for creators like you. Open RepeatEats to apply." },
+    { label: "Opportunities", title: "✨ Fresh opportunities", body: "New collab opportunities just dropped in your area. Check them out!" },
+    { label: "Reminder", title: "📸 Don't forget to post", body: "Have an approved collab? Tag @repeateats in your content to get featured." },
+  ],
+  all: [
+    { label: "Announcement", title: "📣 News from RepeatEats", body: "We've got exciting updates for the whole RepeatEats community." },
+    { label: "What's new", title: "🚀 Something new just landed", body: "Open the app to see what's new on RepeatEats today." },
+  ],
+};
+
+const EMAIL_TEMPLATES: Record<AudienceKey, EmailTpl[]> = {
+  customers: [
+    { label: "New feature", subject: "Exciting new features on RepeatEats 🚀", body: "Hi there,\n\nWe've been busy building new features to make RepeatEats even better for you.\n\nOpen the app to see what's new today!\n\nBest,\nTejas\nFounder, RepeatEats" },
+    { label: "New deals", subject: "New deals are live near you 🍽️", body: "Hi there,\n\nFresh deals just dropped from restaurants near you on RepeatEats.\n\nClaim yours before they're gone!\n\nBest,\nTejas\nFounder, RepeatEats" },
+  ],
+  restaurants: [
+    { label: "Welcome", subject: "Welcome to RepeatEats! Here's how to get started 🍽️", body: "Hi there,\n\nThank you for joining RepeatEats! We're excited to help you attract new customers.\n\nHere's how to get started:\n1. Add your first deal\n2. Go live on the platform\n3. Watch customers discover you\n\nNeed help? Just reply to this email.\n\nBest,\nTejas\nFounder, RepeatEats" },
+    { label: "Add a deal", subject: "Bring in more diners this week 📈", body: "Hi there,\n\nRestaurants posting deals on RepeatEats are getting discovered by new customers every day.\n\nLog in and post a deal in under 5 minutes — it's free during launch.\n\nBest,\nTejas\nFounder, RepeatEats" },
+  ],
+  creators: [
+    { label: "Creator welcome", subject: "Welcome to the RepeatEats creator program ✨", body: "Hi there,\n\nThanks for joining RepeatEats as a creator! Restaurants are looking for local voices like you.\n\nOpen the app to browse and apply for collabs near you.\n\nBest,\nTejas\nFounder, RepeatEats" },
+    { label: "New collabs", subject: "New collab opportunities for you 🤝", body: "Hi there,\n\nNew restaurant collab opportunities just opened up in your area on RepeatEats.\n\nApply now and start creating!\n\nBest,\nTejas\nFounder, RepeatEats" },
+  ],
+  all: [
+    { label: "Announcement", subject: "An update from RepeatEats 📣", body: "Hi there,\n\nWe've got some exciting news to share with the whole RepeatEats community.\n\nThanks for being part of the journey.\n\nBest,\nTejas\nFounder, RepeatEats" },
+  ],
+};
 
 export function BroadcastClient({ stats }: { stats: Stats }) {
   const [tab, setTab] = useState<TabKey>("push");
@@ -60,7 +101,17 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailResult, setEmailResult] = useState<string | null>(null);
 
-  const getAudienceCount = (key: AudienceKey, type: TabKey) => {
+  // Total audience size (everyone in that group). Reachability (who has a
+  // push token / email) is handled server-side at send time.
+  const getAudienceCount = (key: AudienceKey) => {
+    if (key === "customers") return stats.totalCustomers;
+    if (key === "restaurants") return stats.totalRestaurants;
+    if (key === "creators") return stats.totalCreators;
+    return stats.totalCustomers + stats.totalRestaurants + stats.totalCreators;
+  };
+
+  // How many will actually receive this send (push token for push, email for email)
+  const getReachable = (key: AudienceKey, type: TabKey) => {
     const push = type === "push";
     const c = push ? stats.customerWithPush : stats.customerWithEmail;
     const r = push ? stats.restaurantWithPush : stats.restaurantWithEmail;
@@ -70,6 +121,8 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
     if (key === "creators") return cr;
     return c + r + cr;
   };
+
+  const portalColor = PORTAL_COLORS[audience];
 
   const handleSendPush = async () => {
     if (!pushTitle || !pushBody) return;
@@ -148,7 +201,7 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
             key={t}
             onClick={() => setTab(t)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors"
-            style={tab === t ? { backgroundColor: "#E85D04", color: "#fff" } : { color: "#888" }}
+            style={tab === t ? { backgroundColor: portalColor, color: "#fff" } : { color: "#888" }}
           >
             {t === "push" ? <Bell size={13} /> : <Mail size={13} />}
             {t === "push" ? "Push Notification" : "Promo Email"}
@@ -160,20 +213,23 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
       <div>
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Audience</p>
         <div className="flex gap-2">
-          {AUDIENCE_OPTIONS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setAudience(key)}
-              className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border text-xs font-medium transition-all"
-              style={audience === key
-                ? { borderColor: "#E85D04", backgroundColor: "#E85D0415", color: "#E85D04" }
-                : { borderColor: "transparent", backgroundColor: "#1E1E1E", color: "#888" }}
-            >
-              <Icon size={15} />
-              <span>{label}</span>
-              <span className="text-[10px] opacity-70">{getAudienceCount(key, tab)}</span>
-            </button>
-          ))}
+          {AUDIENCE_OPTIONS.map(({ key, label, icon: Icon }) => {
+            const c = PORTAL_COLORS[key];
+            return (
+              <button
+                key={key}
+                onClick={() => setAudience(key)}
+                className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border text-xs font-medium transition-all"
+                style={audience === key
+                  ? { borderColor: c, backgroundColor: `${c}15`, color: c }
+                  : { borderColor: "transparent", backgroundColor: "#1E1E1E", color: "#888" }}
+              >
+                <Icon size={15} />
+                <span>{label}</span>
+                <span className="text-[10px] opacity-70">{getAudienceCount(key)}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -183,7 +239,7 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Quick Templates</p>
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-              {PUSH_TEMPLATES.map((t) => (
+              {PUSH_TEMPLATES[audience].map((t) => (
                 <button
                   key={t.label}
                   onClick={() => { setPushTitle(t.title); setPushBody(t.body); }}
@@ -222,14 +278,17 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
               {pushResult}
             </p>
           )}
+          <p className="text-[11px] text-muted-foreground text-center">
+            {getReachable(audience, "push")} of {getAudienceCount(audience)} have push enabled · all {getAudienceCount(audience)} also get an in-app notification
+          </p>
           <Button
             onClick={handleSendPush}
             disabled={sendingPush || !pushTitle || !pushBody}
-            className="w-full font-semibold"
-            style={{ backgroundColor: "#E85D04" }}
+            className="w-full font-semibold text-white"
+            style={{ backgroundColor: portalColor }}
           >
             <Bell size={14} />
-            {sendingPush ? "Sending…" : `Send to ${getAudienceCount(audience, "push")} users`}
+            {sendingPush ? "Sending…" : `Send to ${getAudienceCount(audience)} ${audience === "all" ? "users" : audience}`}
           </Button>
         </div>
       )}
@@ -240,7 +299,7 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Quick Templates</p>
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-              {EMAIL_TEMPLATES.map((t) => (
+              {EMAIL_TEMPLATES[audience].map((t) => (
                 <button
                   key={t.label}
                   onClick={() => { setEmailSubject(t.subject); setEmailBody(t.body); }}
@@ -275,14 +334,17 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
               {emailResult}
             </p>
           )}
+          <p className="text-[11px] text-muted-foreground text-center">
+            {getReachable(audience, "email")} of {getAudienceCount(audience)} have an email on file
+          </p>
           <Button
             onClick={handleSendEmail}
             disabled={sendingEmail || !emailSubject || !emailBody}
-            className="w-full font-semibold"
-            style={{ backgroundColor: "#E85D04" }}
+            className="w-full font-semibold text-white"
+            style={{ backgroundColor: portalColor }}
           >
             <Mail size={14} />
-            {sendingEmail ? "Sending…" : `Email ${getAudienceCount(audience, "email")} users`}
+            {sendingEmail ? "Sending…" : `Email ${getReachable(audience, "email")} ${audience === "all" ? "users" : audience}`}
           </Button>
         </div>
       )}

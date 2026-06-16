@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Plus, Send, RefreshCw, Download, Upload, Globe, MapPin, Phone, Mail, ChevronDown,
+  Search, CheckCircle2, AlertTriangle, XCircle,
 } from "lucide-react";
 
 type Prospect = {
@@ -20,7 +21,10 @@ type Prospect = {
   city: string | null;
   status: string | null;
   source: string | null;
+  email_status: string | null;
 };
+
+type EmailFilter = "all" | "has_email" | "no_email";
 
 type Props = {
   campaigns: any[];
@@ -82,6 +86,8 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [emailFilter, setEmailFilter] = useState<EmailFilter>("all");
 
   const handleCrawl = async () => {
     setCrawling(true);
@@ -309,14 +315,67 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
         </div>
         {importResult && <p className="text-xs text-green-400 mb-2">{importResult}</p>}
 
+        {/* Search bar */}
+        <div className="relative mb-2">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search restaurant or email…"
+            className="w-full bg-secondary border border-border rounded-xl pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+          />
+        </div>
+
+        {/* Email availability filter */}
+        <div className="flex gap-2 mb-3">
+          {([
+            { key: "all", label: `All (${prospects.length})` },
+            { key: "has_email", label: `Has email (${prospects.filter((p) => p.email).length})` },
+            { key: "no_email", label: `No email (${prospects.filter((p) => !p.email).length})` },
+          ] as { key: EmailFilter; label: string }[]).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setEmailFilter(key)}
+              className="flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-colors"
+              style={
+                emailFilter === key
+                  ? { backgroundColor: "#E85D04", color: "#fff" }
+                  : { backgroundColor: "#1E1E1E", color: "#888" }
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {prospects.length === 0 && (
           <div className="text-center py-8 text-muted-foreground text-sm">
             No prospects yet. Run the crawler above to find restaurants.
           </div>
         )}
 
+        {(() => {
+          const q = search.trim().toLowerCase();
+          const filtered = prospects.filter((p) => {
+            if (emailFilter === "has_email" && !p.email) return false;
+            if (emailFilter === "no_email" && p.email) return false;
+            if (!q) return true;
+            return (
+              p.name.toLowerCase().includes(q) ||
+              (p.email ?? "").toLowerCase().includes(q) ||
+              (p.city ?? "").toLowerCase().includes(q)
+            );
+          });
+          if (filtered.length === 0) {
+            return (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                No prospects match “{search}”.
+              </div>
+            );
+          }
+          return (
         <div className="space-y-2">
-          {prospects.map((p) => {
+          {filtered.map((p) => {
             const isOpen = expanded === p.id;
             return (
               <div key={p.id} className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -326,8 +385,9 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {p.email ?? "No email found"}{p.city ? ` · ${p.city}` : ""}
+                    <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                      {p.email ? <EmailBadge status={p.email_status} /> : null}
+                      <span className="truncate">{p.email ?? "No email found"}{p.city ? ` · ${p.city}` : ""}</span>
                     </p>
                   </div>
                   <span
@@ -379,6 +439,20 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
                         <span>{p.address}</span>
                       </div>
                     )}
+                    {p.email && (
+                      <div className="flex items-center gap-2 text-[11px] pt-0.5">
+                        <EmailBadge status={p.email_status} />
+                        <span className="text-muted-foreground">
+                          {p.email_status === "valid"
+                            ? "Verified — domain accepts mail"
+                            : p.email_status === "risky"
+                            ? "Unverified — may not be monitored"
+                            : p.email_status === "invalid"
+                            ? "Likely bogus — do not send"
+                            : "Not yet verified"}
+                        </span>
+                      </div>
+                    )}
                     {p.source && (
                       <p className="text-[10px] text-muted-foreground/70 pt-1">
                         Source: {p.source === "google_places" ? "Google Places" : p.source === "openstreetmap" ? "OpenStreetMap" : p.source}
@@ -390,6 +464,8 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
             );
           })}
         </div>
+          );
+        })()}
       </div>
 
       {/* Compose dialog */}
@@ -446,4 +522,14 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
       <div className="h-2" />
     </div>
   );
+}
+
+function EmailBadge({ status }: { status: string | null }) {
+  if (status === "valid")
+    return <CheckCircle2 size={12} className="flex-shrink-0" style={{ color: "#22c55e" }} aria-label="Verified email" />;
+  if (status === "risky")
+    return <AlertTriangle size={12} className="flex-shrink-0" style={{ color: "#f59e0b" }} aria-label="Unverified email" />;
+  if (status === "invalid")
+    return <XCircle size={12} className="flex-shrink-0" style={{ color: "#ef4444" }} aria-label="Bogus email" />;
+  return <Mail size={12} className="flex-shrink-0 text-muted-foreground" aria-label="Unchecked email" />;
 }

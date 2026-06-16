@@ -6,18 +6,25 @@ export const dynamic = "force-dynamic";
 export default async function LaunchPage() {
   const admin = createAdminClient();
 
-  const [campaignsRes, prospectsRes] = await Promise.all([
-    admin
-      .from("email_campaigns")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(10),
-    admin
+  const campaignsRes = await admin
+    .from("email_campaigns")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  // PostgREST caps a single response at 1000 rows — page through to get them all.
+  const prospects: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data } = await admin
       .from("email_prospects")
-      .select("id, name, email, phone, website, address, city, status, source")
-      .order("created_at", { ascending: false })
-      .limit(500),
-  ]);
+      .select("id, name, email, phone, website, address, city, status, source, email_status")
+      .order("email", { ascending: true, nullsFirst: false })
+      .order("name", { ascending: true })
+      .range(from, from + 999);
+    if (!data || data.length === 0) break;
+    prospects.push(...data);
+    if (data.length < 1000) break;
+  }
 
   // Accurate counts straight from the DB (not limited by the page size).
   const [{ count: totalCount }, { count: emailCount }, { count: emailedCount }, { count: registeredCount }] =
@@ -38,7 +45,7 @@ export default async function LaunchPage() {
   return (
     <LaunchClient
       campaigns={campaignsRes.data ?? []}
-      prospects={prospectsRes.data ?? []}
+      prospects={prospects}
       stats={prospectStats}
     />
   );

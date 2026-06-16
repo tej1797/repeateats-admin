@@ -49,7 +49,7 @@ export async function POST(
 
         try {
           await resend.emails.send({
-            from: "Tejas @ RepeatEats <support@repeateats.ca>",
+            from: process.env.RESEND_FROM ?? "Tejas @ RepeatEats <contact@contact.repeateats.ca>",
             to: p.email,
             subject: campaign.subject,
             text: personalizedBody,

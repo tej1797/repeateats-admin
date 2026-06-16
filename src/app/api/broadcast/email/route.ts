@@ -85,7 +85,7 @@ export async function POST(request: Request) {
     const batch = emails.slice(i, i + 50);
     for (const email of batch) {
       const { error } = await resend.emails.send({
-        from: "RepeatEats <support@repeateats.ca>",
+        from: process.env.RESEND_FROM ?? "RepeatEats <contact@contact.repeateats.ca>",
         to: email,
         subject,
         html,

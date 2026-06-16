@@ -9,21 +9,27 @@ import { Bell, Mail, Users, Store, Zap, TrendingUp, Star } from "lucide-react";
 
 type Stats = {
   totalCustomers: number;
-  withEmail: number;
-  withPush: number;
-  restaurantOwners: number;
+  customerWithEmail: number;
+  customerWithPush: number;
+  totalRestaurants: number;
+  restaurantWithEmail: number;
+  restaurantWithPush: number;
   liveRestaurants: number;
+  totalCreators: number;
+  creatorWithEmail: number;
+  creatorWithPush: number;
   repeatPlusUsers: number;
   totalBillableRedemptions: number;
   thisMonthBillable: number;
 };
 
-type AudienceKey = "customers" | "restaurants" | "all";
+type AudienceKey = "customers" | "restaurants" | "creators" | "all";
 type TabKey = "push" | "email";
 
 const AUDIENCE_OPTIONS: { key: AudienceKey; label: string; icon: any }[] = [
   { key: "customers", label: "Customers", icon: Users },
   { key: "restaurants", label: "Restaurants", icon: Store },
+  { key: "creators", label: "Creators", icon: Star },
   { key: "all", label: "Everyone", icon: Zap },
 ];
 
@@ -55,15 +61,14 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
   const [emailResult, setEmailResult] = useState<string | null>(null);
 
   const getAudienceCount = (key: AudienceKey, type: TabKey) => {
-    if (type === "push") {
-      if (key === "customers") return stats.withPush;
-      if (key === "restaurants") return stats.restaurantOwners; // approximation
-      return stats.withPush + stats.restaurantOwners;
-    } else {
-      if (key === "customers") return stats.withEmail;
-      if (key === "restaurants") return stats.restaurantOwners;
-      return stats.withEmail + stats.restaurantOwners;
-    }
+    const push = type === "push";
+    const c = push ? stats.customerWithPush : stats.customerWithEmail;
+    const r = push ? stats.restaurantWithPush : stats.restaurantWithEmail;
+    const cr = push ? stats.creatorWithPush : stats.creatorWithEmail;
+    if (key === "customers") return c;
+    if (key === "restaurants") return r;
+    if (key === "creators") return cr;
+    return c + r + cr;
   };
 
   const handleSendPush = async () => {
@@ -120,11 +125,11 @@ export function BroadcastClient({ stats }: { stats: Stats }) {
       <div className="grid grid-cols-2 gap-3">
         {[
           { label: "Customers", value: stats.totalCustomers, icon: Users, color: "#E85D04" },
-          { label: "Push Enabled", value: stats.withPush, icon: Bell, color: "#3b82f6" },
+          { label: "Creators", value: stats.totalCreators, icon: Star, color: "#7E22CE" },
+          { label: "Live Restaurants", value: stats.liveRestaurants, icon: Store, color: "#3b82f6" },
+          { label: "Push Enabled", value: stats.customerWithPush, icon: Bell, color: "#3b82f6" },
           { label: "Repeat+ Users", value: stats.repeatPlusUsers, icon: Star, color: "#f59e0b" },
-          { label: "Live Restaurants", value: stats.liveRestaurants, icon: Store, color: "#22c55e" },
-          { label: "Billable (MTD)", value: stats.thisMonthBillable, icon: TrendingUp, color: "#E85D04" },
-          { label: "Total Billable", value: stats.totalBillableRedemptions, icon: TrendingUp, color: "#7E22CE" },
+          { label: "Billable (MTD)", value: stats.thisMonthBillable, icon: TrendingUp, color: "#22c55e" },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-card border border-border rounded-2xl p-3">
             <div className="flex items-center gap-2 mb-1">

@@ -14,8 +14,22 @@ export async function POST(request: Request) {
   let emails: string[] = [];
 
   if (audience === "customers") {
-    const { data } = await admin.from("users").select("email").not("email", "is", null);
+    const { data } = await admin
+      .from("users")
+      .select("email")
+      .not("email", "is", null)
+      .not("role", "eq", "restaurant");
     emails = (data ?? []).map((u) => u.email).filter(Boolean);
+  } else if (audience === "creators") {
+    const { data: infl } = await admin
+      .from("influencers")
+      .select("user_id")
+      .not("user_id", "is", null);
+    const ids = (infl ?? []).map((i) => i.user_id);
+    if (ids.length > 0) {
+      const { data } = await admin.from("users").select("email").in("id", ids).not("email", "is", null);
+      emails = (data ?? []).map((u) => u.email).filter(Boolean);
+    }
   } else if (audience === "restaurants") {
     // Email restaurant owners
     const { data: owners } = await admin

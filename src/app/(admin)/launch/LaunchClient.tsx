@@ -24,7 +24,7 @@ type Prospect = {
   email_status: string | null;
 };
 
-type EmailFilter = "all" | "has_email" | "no_email";
+type EmailFilter = "all" | "valid" | "risky" | "no_email";
 
 type Props = {
   campaigns: any[];
@@ -326,24 +326,26 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
           />
         </div>
 
-        {/* Email availability filter */}
+        {/* Email validity filter */}
         <div className="flex gap-2 mb-3">
           {([
-            { key: "all", label: `All (${prospects.length})` },
-            { key: "has_email", label: `Has email (${prospects.filter((p) => p.email).length})` },
-            { key: "no_email", label: `No email (${prospects.filter((p) => !p.email).length})` },
-          ] as { key: EmailFilter; label: string }[]).map(({ key, label }) => (
+            { key: "all", label: "All", count: prospects.length, color: "#E85D04" },
+            { key: "valid", label: "Valid", count: prospects.filter((p) => p.email_status === "valid").length, color: "#22c55e" },
+            { key: "risky", label: "Risky", count: prospects.filter((p) => p.email_status === "risky").length, color: "#f59e0b" },
+            { key: "no_email", label: "No email", count: prospects.filter((p) => !p.email).length, color: "#888" },
+          ] as { key: EmailFilter; label: string; count: number; color: string }[]).map(({ key, label, count, color }) => (
             <button
               key={key}
               onClick={() => setEmailFilter(key)}
-              className="flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-colors"
+              className="flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-colors flex flex-col items-center"
               style={
                 emailFilter === key
-                  ? { backgroundColor: "#E85D04", color: "#fff" }
+                  ? { backgroundColor: color, color: "#fff" }
                   : { backgroundColor: "#1E1E1E", color: "#888" }
               }
             >
-              {label}
+              <span>{label}</span>
+              <span className="text-[10px] opacity-80">{count}</span>
             </button>
           ))}
         </div>
@@ -357,7 +359,8 @@ export function LaunchClient({ campaigns, prospects, stats }: Props) {
         {(() => {
           const q = search.trim().toLowerCase();
           const filtered = prospects.filter((p) => {
-            if (emailFilter === "has_email" && !p.email) return false;
+            if (emailFilter === "valid" && p.email_status !== "valid") return false;
+            if (emailFilter === "risky" && p.email_status !== "risky") return false;
             if (emailFilter === "no_email" && p.email) return false;
             if (!q) return true;
             return (

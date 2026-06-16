@@ -67,6 +67,21 @@ export async function POST(request: Request) {
       .not("expo_push_token", "is", null)
       .in("id", ownerIds);
     users = (data ?? []) as typeof users;
+  } else if (audience === "creators") {
+    const { data: infl } = await admin
+      .from("influencers")
+      .select("user_id")
+      .not("user_id", "is", null);
+    const creatorIds = (infl ?? []).map((i) => i.user_id);
+    if (creatorIds.length === 0) {
+      return NextResponse.json({ sent: 0, failed: 0, in_app: 0, skipped: "no creators" });
+    }
+    const { data } = await admin
+      .from("users")
+      .select("id, expo_push_token")
+      .not("expo_push_token", "is", null)
+      .in("id", creatorIds);
+    users = (data ?? []) as typeof users;
   } else {
     const { data } = await admin
       .from("users")

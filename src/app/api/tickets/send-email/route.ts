@@ -8,12 +8,6 @@ const PORTAL_COLORS: Record<string, string> = {
   restaurant: "#3b82f6",
   creator: "#7E22CE",
 };
-const PORTAL_LABELS: Record<string, string> = {
-  customer: "Customer Support",
-  restaurant: "Restaurant Support",
-  creator: "Creator Support",
-};
-
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 function buildHtml(
@@ -25,7 +19,6 @@ function buildHtml(
   fallbackBody: string
 ): string {
   const accent = PORTAL_COLORS[portal] ?? "#E85D04";
-  const portalLabel = PORTAL_LABELS[portal] ?? "Support";
   const shortId = ticketId.split("-")[0].toUpperCase();
 
   const cards = messages.length > 0
@@ -49,8 +42,8 @@ function buildHtml(
   <div style="background:#0f0f0f;padding:24px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
     <div style="max-width:600px;margin:0 auto;background:#161616;border-radius:14px;overflow:hidden;border:1px solid #262626">
       <!-- Header -->
-      <div style="background:${accent};padding:30px 24px;text-align:center">
-        <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:.5px">RepEAT</div>
+      <div style="background:#1d4ed8;padding:30px 24px;text-align:center">
+        <div style="font-size:28px;font-weight:800;letter-spacing:.5px"><span style="color:#ffffff">Rep</span><span style="color:#E85D04">EAT</span></div>
         <div style="font-size:11px;font-weight:600;letter-spacing:3px;color:rgba(255,255,255,.85);margin-top:6px">SUPPORT CENTRE</div>
       </div>
       <!-- Body -->
@@ -62,9 +55,9 @@ function buildHtml(
           Reply to this email to continue the conversation. For immediate assistance, you can also reach us on WhatsApp.
         </p>
         <hr style="border:none;border-top:1px solid #262626;margin:24px 0"/>
-        <p style="color:#6b7177;font-size:11px;line-height:1.6;margin:0">
-          RepeatEats · ${portalLabel} · GTA, Ontario<br/>
-          <a href="mailto:contact@contact.repeateats.ca" style="color:${accent};text-decoration:none">contact@contact.repeateats.ca</a>
+        <p style="color:#6b7177;font-size:11px;line-height:1.7;margin:0;text-align:center">
+          RepEAT Inc · Ontario, Canada<br/>
+          Reply to this email or contact us at <a href="mailto:contact@contact.repeateats.ca" style="color:#5b8def;text-decoration:none">contact@contact.repeateats.ca</a>
         </p>
       </div>
     </div>

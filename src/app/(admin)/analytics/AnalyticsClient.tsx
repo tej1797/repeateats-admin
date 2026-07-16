@@ -2,9 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-} from "recharts";
 import { ArrowLeft, AlertTriangle, TrendingUp, Users, Store, Star, ChevronRight } from "lucide-react";
 import type { AnalyticsOverview } from "@/types";
 
@@ -46,12 +43,11 @@ export function AnalyticsClient(props: Props) {
   const limitedRestaurants =
     restaurantLimit === "All" ? sortedRestaurants : sortedRestaurants.slice(0, restaurantLimit);
 
-  const chartData = sortedRestaurants.slice(0, 10).map((r: any) => ({
-    name: r.name,
-    claims: r.total_claims,
-    redeems: r.total_redeems,
-    id: r.id,
-  }));
+  // One shared scale so bars are comparable across restaurants
+  const maxCount = Math.max(
+    ...limitedRestaurants.map((r: any) => Math.max(r.total_claims, r.total_redeems)),
+    1
+  );
 
   return (
     <div className="pt-12 px-4 space-y-5">
@@ -63,27 +59,31 @@ export function AnalyticsClient(props: Props) {
           label="Customers"
           value={overview.total_customers}
           sub={`+${overview.new_customers_7d} this week`}
-          icon={<Users size={16} />}
+          icon={<Users size={15} />}
+          accent="#E85D04"
           onClick={() => router.push("/users?tab=customers")}
         />
         <BigStatCard
           label="Restaurants"
           value={overview.total_restaurants}
           sub={`+${overview.new_restaurants_7d} this week`}
-          icon={<Store size={16} />}
+          icon={<Store size={15} />}
+          accent="#3b82f6"
           onClick={() => router.push("/users?tab=restaurants")}
         />
         <BigStatCard
           label="Creators"
           value={overview.total_creators}
-          icon={<Star size={16} />}
+          icon={<Star size={15} />}
+          accent="#7E22CE"
           onClick={() => router.push("/users?tab=creators")}
         />
         <BigStatCard
           label="Active Collabs"
           value={overview.active_collabs}
           sub={`${overview.total_collabs} total`}
-          icon={<TrendingUp size={16} />}
+          icon={<TrendingUp size={15} />}
+          accent="#22c55e"
         />
       </div>
 
@@ -138,85 +138,11 @@ export function AnalyticsClient(props: Props) {
         </div>
       </div>
 
-      {/* Restaurant performance bar chart */}
-      {chartData.length > 0 && (
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Restaurant Performance
-            </p>
-            <div className="flex gap-3 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: "#E85D04" }} />
-                Claims
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: "#22c55e" }} />
-                Redeems
-              </span>
-            </div>
-          </div>
-          <p className="text-[10px] text-muted-foreground mb-2">
-            Tap a bar to sort the list below · sorted by{" "}
-            <span style={{ color: chartSort === "claims" ? "#E85D04" : "#22c55e" }}>
-              {chartSort}
-            </span>
-          </p>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                margin={{ top: 4, right: 4, left: -24, bottom: 48 }}
-                style={{ background: "transparent" }}
-              >
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 8, fill: "#888" }}
-                  axisLine={false}
-                  tickLine={false}
-                  angle={-40}
-                  textAnchor="end"
-                  interval={0}
-                />
-                <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: "#888" }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 8, fontSize: 11 }}
-                  labelStyle={{ color: "#ccc" }}
-                  cursor={{ fill: "rgba(255,255,255,0.05)" }}
-                />
-                <Bar
-                  dataKey="claims"
-                  name="Claims"
-                  fill="#E85D04"
-                  radius={[3, 3, 0, 0]}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => setChartSort("claims")}
-                />
-                <Bar
-                  dataKey="redeems"
-                  name="Redeems"
-                  fill="#22c55e"
-                  radius={[3, 3, 0, 0]}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => setChartSort("redeems")}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* By Restaurant — sortable list with limit dropdown */}
-      <div className="space-y-2 pb-2">
-        <div className="flex items-center justify-between">
+      {/* Restaurant performance — horizontal bars, readable names, tap to drill down */}
+      <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            By Restaurant{" "}
-            <span
-              className="normal-case font-normal text-[10px]"
-              style={{ color: chartSort === "claims" ? "#E85D04" : "#22c55e" }}
-            >
-              ↓ {chartSort}
-            </span>
+            Restaurant Performance
           </p>
           <div className="flex gap-1">
             {LIMIT_OPTIONS.map((opt) => (
@@ -236,33 +162,82 @@ export function AnalyticsClient(props: Props) {
           </div>
         </div>
 
-        {limitedRestaurants.map((r: any) => (
-          <button
-            key={r.id}
-            onClick={() => router.push(`/analytics?view=restaurant&restaurantId=${r.id}`)}
-            className="w-full bg-card border border-border rounded-2xl p-4 text-left flex items-center gap-3"
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+        {/* Sort chips */}
+        <div className="flex gap-2">
+          {([
+            { key: "claims", label: "Sort by claims", color: "#E85D04" },
+            { key: "redeems", label: "Sort by redeems", color: "#22c55e" },
+          ] as { key: SortKey; label: string; color: string }[]).map(({ key, label, color }) => (
+            <button
+              key={key}
+              onClick={() => setChartSort(key)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors"
+              style={
+                chartSort === key
+                  ? { backgroundColor: color, color: "#fff" }
+                  : { backgroundColor: "#1E1E1E", color: "#888" }
+              }
+            >
+              <span
+                className="w-2 h-2 rounded-full inline-block"
+                style={{ backgroundColor: chartSort === key ? "#fff" : color }}
+              />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {limitedRestaurants.length === 0 && (
+          <p className="text-center py-6 text-muted-foreground text-sm">No restaurant activity yet.</p>
+        )}
+
+        <div className="space-y-1">
+          {limitedRestaurants.map((r: any) => (
+            <button
+              key={r.id}
+              onClick={() => router.push(`/analytics?view=restaurant&restaurantId=${r.id}`)}
+              className="w-full text-left rounded-xl px-3 py-3 hover:bg-secondary/60 transition-colors"
+            >
+              <div className="flex items-center gap-2 mb-2">
                 <p className="text-sm font-semibold text-foreground truncate">{r.name}</p>
                 {r.has_discrepancy && (
-                  <AlertTriangle size={13} className="text-red-400 flex-shrink-0" />
+                  <AlertTriangle size={12} className="text-red-400 flex-shrink-0" />
                 )}
-              </div>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="text-xs" style={{ color: "#E85D04" }}>{r.total_claims} claimed</span>
-                <span className="text-xs text-green-400">{r.total_redeems} redeemed</span>
                 <span
-                  className="text-xs font-medium ml-auto"
+                  className="text-xs font-bold ml-auto flex-shrink-0"
                   style={{ color: r.redemption_rate >= 60 ? "#22c55e" : r.redemption_rate >= 40 ? "#f59e0b" : "#ef4444" }}
                 >
                   {r.redemption_rate}%
                 </span>
+                <ChevronRight size={13} className="text-muted-foreground flex-shrink-0" />
               </div>
-            </div>
-            <ChevronRight size={14} className="text-muted-foreground flex-shrink-0" />
-          </button>
-        ))}
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${(r.total_claims / maxCount) * 100}%`, backgroundColor: "#E85D04" }}
+                    />
+                  </div>
+                  <span className="text-[10px] w-16 flex-shrink-0" style={{ color: "#E85D04" }}>
+                    {r.total_claims} claims
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${(r.total_redeems / maxCount) * 100}%`, backgroundColor: "#22c55e" }}
+                    />
+                  </div>
+                  <span className="text-[10px] w-16 flex-shrink-0 text-green-400">
+                    {r.total_redeems} redeems
+                  </span>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
       <div className="h-2" />
     </div>
@@ -274,27 +249,35 @@ function BigStatCard({
   value,
   sub,
   icon,
+  accent = "#E85D04",
   onClick,
 }: {
   label: string;
   value: number;
   sub?: string;
   icon?: React.ReactNode;
+  accent?: string;
   onClick?: () => void;
 }) {
   return (
     <div
       className={`bg-card border border-border rounded-2xl p-4 ${onClick ? "active:opacity-80 cursor-pointer" : ""}`}
       onClick={onClick}
+      style={{ borderTop: `2px solid ${accent}` }}
     >
-      <div className="flex items-center justify-between mb-2 text-muted-foreground">
+      <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2">
-          {icon}
-          <p className="text-xs font-medium">{label}</p>
+          <span
+            className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: `${accent}1f`, color: accent }}
+          >
+            {icon}
+          </span>
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
         </div>
         {onClick && <ChevronRight size={12} className="text-muted-foreground" />}
       </div>
-      <p className="text-2xl font-bold text-foreground">{value.toLocaleString()}</p>
+      <p className="text-2xl font-bold" style={{ color: accent }}>{value.toLocaleString()}</p>
       {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   );

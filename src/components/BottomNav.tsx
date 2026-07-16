@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Inbox, ShieldCheck, BarChart3, Users, Grid3X3,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const BRAND = "#E85D04";
 
@@ -47,11 +47,26 @@ export function BottomNav({
   const pathname = usePathname();
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [counts, setCounts] = useState({ queue: queueCount, verify: verifyCount });
+
+  // Layouts don't re-render on soft navigation, so the server-passed counts go
+  // stale — refresh on every route change and every 60s.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () =>
+      fetch("/api/nav-counts")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { if (j && !cancelled) setCounts(j); })
+        .catch(() => {});
+    refresh();
+    const t = setInterval(refresh, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [pathname]);
 
   const isActive = (href: string) => pathname.startsWith(href);
   const isMoreActive = MORE_ITEMS.some((i) => pathname.startsWith(i.href));
   const badgeCount = (badge: "queue" | "verify" | null) =>
-    badge === "queue" ? queueCount : badge === "verify" ? verifyCount : 0;
+    badge === "queue" ? counts.queue : badge === "verify" ? counts.verify : 0;
 
   return (
     <nav

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { format, formatDistanceToNow } from "date-fns";
 import {
-  ShieldCheck, ShieldX, Phone, MapPin, Mail, AlertTriangle, CheckCircle2, XCircle, Clock,
+  ShieldCheck, ShieldX, Phone, MapPin, Mail, AlertTriangle, CheckCircle2, XCircle, Clock, Search,
 } from "lucide-react";
 
 type Venue = {
@@ -24,11 +24,42 @@ type Venue = {
   verification_note: string | null;
 };
 
+const TYPE_LABELS: Record<string, string> = {
+  restaurant: "Restaurant",
+  food_truck: "Food truck",
+  cafe: "Café",
+  bakery: "Bakery",
+  bar: "Bar",
+};
+const labelFor = (t: string) =>
+  TYPE_LABELS[t] ?? t.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+
 export function VerifyClient({ pending, reviewed }: { pending: Venue[]; reviewed: Venue[] }) {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [result, setResult] = useState<{ id: string; ok: boolean; msg: string } | null>(null);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+
+  // Venue-type chips built from the data itself, so new types appear automatically
+  const venueTypes = [
+    ...new Set([...pending, ...reviewed].map((r) => r.venue_type ?? "restaurant")),
+  ].sort();
+
+  const matches = (r: Venue) => {
+    if (typeFilter !== "all" && (r.venue_type ?? "restaurant") !== typeFilter) return false;
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      r.name.toLowerCase().includes(q) ||
+      (r.owner_email ?? "").toLowerCase().includes(q) ||
+      (r.city ?? "").toLowerCase().includes(q)
+    );
+  };
+
+  const filteredPending = pending.filter(matches);
+  const filteredReviewed = reviewed.filter(matches);
 
   const review = async (id: string, approve: boolean, rejectNote?: string) => {
     setBusyId(id);
@@ -66,18 +97,47 @@ export function VerifyClient({ pending, reviewed }: { pending: Venue[]; reviewed
         </p>
       </div>
 
+      {/* Search + venue-type filter */}
+      <div className="space-y-2">
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, owner email, or city…"
+            className="w-full bg-secondary border border-border rounded-xl pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+          />
+        </div>
+        <div className="flex gap-2 overflow-x-auto no-scrollbar">
+          {["all", ...venueTypes].map((t) => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t)}
+              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+              style={
+                typeFilter === t
+                  ? { backgroundColor: "#E85D04", color: "#fff" }
+                  : { backgroundColor: "#1E1E1E", color: "#888" }
+              }
+            >
+              {t === "all" ? "All types" : labelFor(t)}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Pending */}
       <div>
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          Pending ({pending.length})
+          Pending ({filteredPending.length})
         </p>
-        {pending.length === 0 && (
+        {filteredPending.length === 0 && (
           <div className="text-center py-10 text-muted-foreground text-sm bg-card border border-border rounded-2xl">
-            🎉 No restaurants waiting for review.
+            {pending.length === 0 ? "🎉 No restaurants waiting for review." : "No pending venues match your search."}
           </div>
         )}
         <div className="space-y-3">
-          {pending.map((r) => {
+          {filteredPending.map((r) => {
             const isRejecting = rejectingId === r.id;
             const busy = busyId === r.id;
             const rowResult = result?.id === r.id ? result : null;
@@ -207,11 +267,13 @@ export function VerifyClient({ pending, reviewed }: { pending: Venue[]; reviewed
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Recently Reviewed
         </p>
-        {reviewed.length === 0 && (
-          <p className="text-center py-6 text-muted-foreground text-sm">Nothing reviewed yet.</p>
+        {filteredReviewed.length === 0 && (
+          <p className="text-center py-6 text-muted-foreground text-sm">
+            {reviewed.length === 0 ? "Nothing reviewed yet." : "No reviewed venues match your search."}
+          </p>
         )}
         <div className="space-y-2">
-          {reviewed.map((r) => {
+          {filteredReviewed.map((r) => {
             const ok = r.verification_status === "verified";
             return (
               <div key={r.id} className="bg-card border border-border rounded-2xl p-3">
@@ -224,7 +286,7 @@ export function VerifyClient({ pending, reviewed }: { pending: Venue[]; reviewed
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{r.name}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {r.owner_email ?? "—"}
+                      {labelFor(r.venue_type ?? "restaurant")} · {r.owner_email ?? "—"}
                       {r.city ? ` · ${r.city}` : ""}
                     </p>
                   </div>

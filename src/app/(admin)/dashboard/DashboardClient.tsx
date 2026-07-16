@@ -61,10 +61,8 @@ export function DashboardClient({ data }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">
-            Rep<span style={{ color: "#E85D04" }}>EAT</span> Admin
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Support Overview</p>
+          <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Support overview</p>
         </div>
         {stats.newSinceLastCheck > 0 && (
           <Badge

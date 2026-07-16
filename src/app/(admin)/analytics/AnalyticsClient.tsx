@@ -6,20 +6,11 @@ import { ArrowLeft, AlertTriangle, TrendingUp, Users, Store, Star, ChevronRight 
 import type { AnalyticsOverview } from "@/types";
 
 type Props =
-  | {
-      view: "overview";
-      overview: AnalyticsOverview;
-      restaurants: any[];
-      restaurant?: never;
-      deals?: never;
-    }
-  | {
-      view: "restaurant";
-      restaurant: any;
-      deals: any[];
-      overview?: never;
-      restaurants?: never;
-    };
+  | { view: "overview"; overview: AnalyticsOverview; restaurants: any[] }
+  | { view: "restaurant"; restaurant: any; deals: any[] }
+  | { view: "customers"; customers: any[]; customerClaims: any[] }
+  | { view: "restaurants"; allRestaurants: any[]; allDeals: any[] }
+  | { view: "creators"; creators: any[]; collabs: any[] };
 
 const LIMIT_OPTIONS = [10, 20, 30, 50, "All"] as const;
 type LimitOption = typeof LIMIT_OPTIONS[number];
@@ -33,6 +24,15 @@ export function AnalyticsClient(props: Props) {
 
   if (props.view === "restaurant") {
     return <RestaurantDrillDown restaurant={props.restaurant} deals={props.deals} />;
+  }
+  if (props.view === "customers") {
+    return <CustomersAnalytics customers={props.customers} claims={props.customerClaims} />;
+  }
+  if (props.view === "restaurants") {
+    return <RestaurantsAnalytics restaurants={props.allRestaurants} deals={props.allDeals} />;
+  }
+  if (props.view === "creators") {
+    return <CreatorsAnalytics creators={props.creators} collabs={props.collabs} />;
   }
 
   const { overview, restaurants } = props;
@@ -61,7 +61,7 @@ export function AnalyticsClient(props: Props) {
           sub={`+${overview.new_customers_7d} this week`}
           icon={<Users size={15} />}
           accent="#E85D04"
-          onClick={() => router.push("/users?tab=customers")}
+          onClick={() => router.push("/analytics?view=customers")}
         />
         <BigStatCard
           label="Restaurants"
@@ -69,14 +69,14 @@ export function AnalyticsClient(props: Props) {
           sub={`+${overview.new_restaurants_7d} this week`}
           icon={<Store size={15} />}
           accent="#3b82f6"
-          onClick={() => router.push("/users?tab=restaurants")}
+          onClick={() => router.push("/analytics?view=restaurants")}
         />
         <BigStatCard
           label="Creators"
           value={overview.total_creators}
           icon={<Star size={15} />}
           accent="#7E22CE"
-          onClick={() => router.push("/users?tab=creators")}
+          onClick={() => router.push("/analytics?view=creators")}
         />
         <BigStatCard
           label="Active Collabs"
@@ -84,6 +84,7 @@ export function AnalyticsClient(props: Props) {
           sub={`${overview.total_collabs} total`}
           icon={<TrendingUp size={15} />}
           accent="#22c55e"
+          onClick={() => router.push("/analytics?view=creators")}
         />
       </div>
 
@@ -400,6 +401,370 @@ function RestaurantDrillDown({ restaurant, deals }: { restaurant: any; deals: an
         })()}
       </div>
       <div className="h-2" />
+    </div>
+  );
+}
+
+/* ================= Portal drill-down analytics ================= */
+
+const DEAL_KIND_LABELS: Record<string, string> = {
+  bogo: "Buy 1 Get 1 Free",
+  bogo_half: "BOGO 50% off",
+  percentage: "% off",
+  fixed: "$ off",
+  set_price: "Set price combo",
+  free_item: "Free item",
+};
+const dealKindLabel = (t: string | null) =>
+  t ? DEAL_KIND_LABELS[t] ?? t.replace(/_/g, " ") : "Other";
+
+function tally<T>(items: T[], key: (item: T) => string | null | undefined) {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const k = key(item);
+    if (!k) continue;
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function DrillHeader({ title, sub, accent }: { title: string; sub: string; accent: string }) {
+  const router = useRouter();
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        onClick={() => router.push("/analytics")}
+        className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0"
+      >
+        <ArrowLeft size={16} />
+      </button>
+      <div>
+        <h1 className="text-lg font-bold" style={{ color: accent }}>{title}</h1>
+        <p className="text-xs text-muted-foreground">{sub}</p>
+      </div>
+    </div>
+  );
+}
+
+function CityChips({
+  cities, selected, onSelect, accent,
+}: { cities: string[]; selected: string; onSelect: (c: string) => void; accent: string }) {
+  if (cities.length === 0) return null;
+  return (
+    <div className="flex gap-2 overflow-x-auto no-scrollbar">
+      {["all", ...cities].map((c) => (
+        <button
+          key={c}
+          onClick={() => onSelect(c)}
+          className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+          style={
+            selected === c
+              ? { backgroundColor: accent, color: "#fff" }
+              : { backgroundColor: "#1E1E1E", color: "#888" }
+          }
+        >
+          {c === "all" ? "All cities" : c}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-card border border-border rounded-2xl p-4">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function RankBars({
+  items, color, unit, empty,
+}: { items: { label: string; value: number; sub?: string }[]; color: string; unit?: string; empty?: string }) {
+  if (items.length === 0) {
+    return <p className="text-sm text-muted-foreground text-center py-3">{empty ?? "No data yet."}</p>;
+  }
+  const max = Math.max(...items.map((i) => i.value), 1);
+  return (
+    <div className="space-y-2.5">
+      {items.map((i) => (
+        <div key={i.label}>
+          <div className="flex justify-between items-baseline mb-1">
+            <span className="text-xs text-foreground truncate capitalize">{i.label}</span>
+            <span className="text-xs font-semibold flex-shrink-0 ml-2" style={{ color }}>
+              {i.value.toLocaleString()}{unit ? ` ${unit}` : ""}{i.sub ? ` · ${i.sub}` : ""}
+            </span>
+          </div>
+          <div className="h-2 bg-secondary rounded-full overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: `${(i.value / max) * 100}%`, backgroundColor: color }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Customers ---------- */
+
+function CustomersAnalytics({ customers, claims }: { customers: any[]; claims: any[] }) {
+  const ACCENT = "#E85D04";
+  const [city, setCity] = useState("all");
+
+  const cities = [...new Set(customers.map((c) => c.city).filter(Boolean))].sort() as string[];
+  const visibleCustomers = city === "all" ? customers : customers.filter((c) => c.city === city);
+  const visibleIds = new Set(visibleCustomers.map((c) => c.id));
+  const visibleClaims = claims.filter((cl) => visibleIds.has(cl.user_id));
+
+  const byCustomer = visibleCustomers
+    .map((c) => {
+      const mine = claims.filter((cl) => cl.user_id === c.id);
+      return {
+        ...c,
+        claims: mine.length,
+        redeems: mine.filter((m) => m.redeemed).length,
+        saved: mine.reduce((s, m) => s + (m.money_saved_cents ?? 0), 0) / 100,
+      };
+    })
+    .sort((a, b) => b.claims - a.claims);
+
+  return (
+    <div className="pt-12 px-4 space-y-4 pb-nav">
+      <DrillHeader title="Customer Analytics" sub="Who claims, what they love, where they are" accent={ACCENT} />
+      <CityChips cities={cities} selected={city} onSelect={setCity} accent={ACCENT} />
+
+      <Section title={`Most active customers (${visibleCustomers.length})`}>
+        {byCustomer.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-3">No customers in this city yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {byCustomer.slice(0, 15).map((c) => (
+              <div key={c.id} className="flex items-center gap-3 py-1.5 border-b border-border/50 last:border-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{c.name ?? c.email}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{c.city ?? "—"}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs">
+                    <span style={{ color: ACCENT }}>{c.claims} claims</span>
+                    {" · "}
+                    <span className="text-green-400">{c.redeems} redeemed</span>
+                  </p>
+                  {c.saved > 0 && (
+                    <p className="text-[10px] text-muted-foreground">${c.saved.toFixed(2)} saved</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Favourite cuisines (by claims)">
+        <RankBars items={tally(visibleClaims, (c) => c.cuisine)} color={ACCENT} unit="claims" empty="No claims yet." />
+      </Section>
+
+      <Section title="Deal types they pick">
+        <RankBars
+          items={tally(visibleClaims, (c) => dealKindLabel(c.discount_type))}
+          color={ACCENT}
+          unit="claims"
+          empty="No claims yet."
+        />
+      </Section>
+
+      <Section title="Restaurants they claim from">
+        <RankBars items={tally(visibleClaims, (c) => c.restaurant_name)} color={ACCENT} unit="claims" empty="No claims yet." />
+      </Section>
+
+      <Section title="Customers by city">
+        <RankBars items={tally(customers, (c) => c.city)} color={ACCENT} unit="customers" empty="No cities recorded." />
+      </Section>
+    </div>
+  );
+}
+
+/* ---------- Restaurants ---------- */
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function RestaurantsAnalytics({ restaurants, deals }: { restaurants: any[]; deals: any[] }) {
+  const ACCENT = "#3b82f6";
+  const [city, setCity] = useState("all");
+
+  const cities = [...new Set(restaurants.map((r) => r.city).filter(Boolean))].sort() as string[];
+  const visibleRestaurants = city === "all" ? restaurants : restaurants.filter((r) => r.city === city);
+  const visibleIds = new Set(visibleRestaurants.map((r) => r.id));
+  const visibleDeals = deals.filter((d) => visibleIds.has(d.restaurant_id));
+  const restById = new Map(restaurants.map((r) => [r.id, r]));
+
+  // When during the week deals get POSTED (created_at day)
+  const postedByDay = WEEKDAYS.map((label, idx) => ({
+    label,
+    value: visibleDeals.filter((d) => new Date(d.created_at).getDay() === idx).length,
+  }));
+  const weekend = postedByDay[0].value + postedByDay[6].value + postedByDay[5].value; // Fri+Sat+Sun
+  const weekday = visibleDeals.length - weekend;
+
+  const topPosters = visibleRestaurants
+    .map((r) => {
+      const mine = deals.filter((d) => d.restaurant_id === r.id);
+      return {
+        label: r.name,
+        value: mine.length,
+        sub: `${mine.reduce((s, d) => s + (d.current_claims ?? 0), 0)} claims`,
+      };
+    })
+    .filter((r) => r.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  return (
+    <div className="pt-12 px-4 space-y-4 pb-nav">
+      <DrillHeader title="Restaurant Analytics" sub="What they post, when, and where" accent={ACCENT} />
+      <CityChips cities={cities} selected={city} onSelect={setCity} accent={ACCENT} />
+
+      <Section title={`Deals posted (${visibleDeals.length} total)`}>
+        <RankBars items={topPosters} color={ACCENT} unit="deals" empty="No deals posted yet." />
+      </Section>
+
+      <Section title="Deal types being posted">
+        <RankBars
+          items={tally(visibleDeals, (d) => dealKindLabel(d.discount_type))}
+          color={ACCENT}
+          unit="deals"
+          empty="No deals yet."
+        />
+      </Section>
+
+      <Section title="Cuisines posting deals">
+        <RankBars
+          items={tally(visibleDeals, (d) => restById.get(d.restaurant_id)?.cuisine)}
+          color={ACCENT}
+          unit="deals"
+          empty="No deals yet."
+        />
+      </Section>
+
+      <Section title="When deals get posted">
+        <div className="flex items-end gap-1.5 h-24 mb-3">
+          {postedByDay.map((d) => {
+            const max = Math.max(...postedByDay.map((x) => x.value), 1);
+            return (
+              <div key={d.label} className="flex-1 flex flex-col items-center justify-end gap-1 h-full">
+                <span className="text-[10px] text-muted-foreground">{d.value || ""}</span>
+                <div
+                  className="w-full rounded-t"
+                  style={{
+                    height: `${(d.value / max) * 70}%`,
+                    minHeight: d.value > 0 ? 4 : 1,
+                    backgroundColor: d.value > 0 ? ACCENT : "#1E1E1E",
+                  }}
+                />
+                <span className="text-[10px] text-muted-foreground">{d.label}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex gap-2 text-xs">
+          <span className="flex-1 bg-secondary rounded-lg px-3 py-2 text-center">
+            <span className="font-bold" style={{ color: ACCENT }}>{weekday}</span>
+            <span className="text-muted-foreground"> weekday posts</span>
+          </span>
+          <span className="flex-1 bg-secondary rounded-lg px-3 py-2 text-center">
+            <span className="font-bold" style={{ color: ACCENT }}>{weekend}</span>
+            <span className="text-muted-foreground"> Fri–Sun posts</span>
+          </span>
+        </div>
+      </Section>
+
+      <Section title="Restaurants by city">
+        <RankBars items={tally(restaurants, (r) => r.city)} color={ACCENT} unit="venues" empty="No cities recorded." />
+      </Section>
+
+      <Section title="Live vs pending">
+        <RankBars
+          items={tally(restaurants, (r) => (r.is_live ? "Live on RepEAT" : r.verification_status === "pending" ? "Awaiting verification" : "Not live"))}
+          color={ACCENT}
+          unit="venues"
+        />
+      </Section>
+    </div>
+  );
+}
+
+/* ---------- Creators ---------- */
+
+function CreatorsAnalytics({ creators, collabs }: { creators: any[]; collabs: any[] }) {
+  const ACCENT = "#7E22CE";
+  const [city, setCity] = useState("all");
+
+  const cities = [...new Set(creators.map((c) => c.city).filter(Boolean))].sort() as string[];
+  const visibleCreators = city === "all" ? creators : creators.filter((c) => c.city === city);
+  const visibleIds = new Set(visibleCreators.map((c) => c.id));
+  const visibleCollabs = collabs.filter((c) => visibleIds.has(c.influencer_id));
+
+  return (
+    <div className="pt-12 px-4 space-y-4 pb-nav">
+      <DrillHeader title="Creator Analytics" sub="Who they are and who they collab with" accent={ACCENT} />
+      <CityChips cities={cities} selected={city} onSelect={setCity} accent={ACCENT} />
+
+      <Section title={`Creators (${visibleCreators.length})`}>
+        {visibleCreators.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-3">No creators in this city yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {[...visibleCreators]
+              .sort((a, b) => (b.follower_count ?? 0) - (a.follower_count ?? 0))
+              .map((c) => (
+                <div key={c.id} className="flex items-center gap-3 py-1.5 border-b border-border/50 last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{c.name}</p>
+                    <p className="text-[11px] text-muted-foreground truncate capitalize">
+                      {[c.niche, c.primary_platform, c.city].filter(Boolean).join(" · ") || "—"}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-xs font-semibold" style={{ color: ACCENT }}>
+                      {(c.follower_count ?? 0).toLocaleString()} followers
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {c.total_collabs ?? 0} collabs{c.rating ? ` · ★ ${c.rating}` : ""}
+                    </p>
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Collabs by cuisine">
+        <RankBars items={tally(visibleCollabs, (c) => c.cuisine)} color={ACCENT} unit="collabs" empty="No collabs yet." />
+      </Section>
+
+      <Section title="Restaurants they collab with">
+        <RankBars items={tally(visibleCollabs, (c) => c.restaurant_name)} color={ACCENT} unit="collabs" empty="No collabs yet." />
+      </Section>
+
+      <Section title="Collab status">
+        <RankBars
+          items={tally(visibleCollabs, (c) => (c.status ?? "unknown").replace(/_/g, " "))}
+          color={ACCENT}
+          unit="collabs"
+          empty="No collabs yet."
+        />
+      </Section>
+
+      <Section title="Creator niches">
+        <RankBars items={tally(creators, (c) => c.niche)} color={ACCENT} unit="creators" empty="No niches recorded." />
+      </Section>
+
+      <Section title="Creators by city">
+        <RankBars items={tally(creators, (c) => c.city)} color={ACCENT} unit="creators" empty="No cities recorded." />
+      </Section>
     </div>
   );
 }

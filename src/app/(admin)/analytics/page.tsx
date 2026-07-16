@@ -37,6 +37,91 @@ export default async function AnalyticsPage({
     );
   }
 
+  if (view === "customers") {
+    // Customer analytics: who claims most, which cuisines/deal kinds they pick, city split
+    const [usersRes, claimsRes, dealsRes, restaurantsRes] = await Promise.all([
+      admin.from("users").select("id, name, email, city, created_at").neq("role", "restaurant"),
+      admin.from("claims").select("id, user_id, deal_id, status, money_saved_cents"),
+      admin.from("deals").select("id, restaurant_id, discount_type"),
+      admin.from("restaurants").select("id, name, cuisine, city"),
+    ]);
+
+    const dealById = new Map((dealsRes.data ?? []).map((d) => [d.id, d]));
+    const restById = new Map((restaurantsRes.data ?? []).map((r) => [r.id, r]));
+
+    // Enrich each claim with the cuisine + deal kind it belongs to
+    const claims = (claimsRes.data ?? []).map((c) => {
+      const deal = dealById.get(c.deal_id);
+      const rest = deal ? restById.get(deal.restaurant_id) : undefined;
+      return {
+        user_id: c.user_id,
+        redeemed: c.status === "redeemed",
+        money_saved_cents: c.money_saved_cents ?? 0,
+        cuisine: rest?.cuisine ?? null,
+        restaurant_name: rest?.name ?? null,
+        discount_type: deal?.discount_type ?? null,
+      };
+    });
+
+    return (
+      <AnalyticsClient
+        view="customers"
+        customers={usersRes.data ?? []}
+        customerClaims={claims}
+      />
+    );
+  }
+
+  if (view === "restaurants") {
+    // Restaurant analytics: what/when they post, cuisines, cities
+    const [restaurantsRes, dealsRes] = await Promise.all([
+      admin.from("restaurants").select("id, name, cuisine, city, is_live, venue_type, verification_status"),
+      admin.from("deals").select("id, restaurant_id, discount_type, created_at, available_days, current_claims, redeemed_count, is_active"),
+    ]);
+    return (
+      <AnalyticsClient
+        view="restaurants"
+        allRestaurants={restaurantsRes.data ?? []}
+        allDeals={dealsRes.data ?? []}
+      />
+    );
+  }
+
+  if (view === "creators") {
+    // Creator analytics: who they are, who they collab with, niches, cities
+    const [influencersRes, usersRes, collabsRes, restaurantsRes] = await Promise.all([
+      admin.from("influencers").select("id, user_id, display_name, niche, follower_count, city, total_collabs, rating, primary_platform, instagram_handle"),
+      admin.from("users").select("id, name, email, city"),
+      admin.from("collabs").select("id, influencer_id, restaurant_id, status, agreed_amount"),
+      admin.from("restaurants").select("id, name, cuisine, city"),
+    ]);
+
+    const userById = new Map((usersRes.data ?? []).map((u) => [u.id, u]));
+    const restById = new Map((restaurantsRes.data ?? []).map((r) => [r.id, r]));
+
+    const creators = (influencersRes.data ?? []).map((i) => {
+      const u = userById.get(i.user_id);
+      return {
+        ...i,
+        name: i.display_name || u?.name || u?.email || "Unknown creator",
+        city: i.city || u?.city || null,
+      };
+    });
+    const collabs = (collabsRes.data ?? []).map((c) => {
+      const rest = restById.get(c.restaurant_id);
+      return {
+        influencer_id: c.influencer_id,
+        status: c.status,
+        agreed_amount: c.agreed_amount,
+        restaurant_name: rest?.name ?? "Unknown",
+        cuisine: rest?.cuisine ?? null,
+        restaurant_city: rest?.city ?? null,
+      };
+    });
+
+    return <AnalyticsClient view="creators" creators={creators} collabs={collabs} />;
+  }
+
   // Level 1: overview
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);

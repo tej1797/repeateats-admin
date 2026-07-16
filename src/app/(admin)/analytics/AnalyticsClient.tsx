@@ -418,15 +418,45 @@ const DEAL_KIND_LABELS: Record<string, string> = {
 const dealKindLabel = (t: string | null) =>
   t ? DEAL_KIND_LABELS[t] ?? t.replace(/_/g, " ") : "Other";
 
-function tally<T>(items: T[], key: (item: T) => string | null | undefined) {
-  const counts = new Map<string, number>();
+// "Indian", "Indian Restaurant", "indian restaurants" → all become "Indian".
+function normalizeCuisine(c: string | null | undefined): string | null {
+  if (!c) return null;
+  let s = c.trim().replace(/\s+(restaurants?|cuisine)$/i, "").trim();
+  if (!s) s = c.trim();
+  return s.replace(/\w\S*/g, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+}
+
+// Lighter shade of each portal accent, for gradient bar fills.
+const SHADE: Record<string, string> = {
+  "#E85D04": "#FB8B3C",
+  "#3b82f6": "#6BA6FF",
+  "#7E22CE": "#B15AF0",
+  "#22c55e": "#4ADE80",
+};
+const barFill = (accent: string) =>
+  `linear-gradient(90deg, ${accent}, ${SHADE[accent] ?? accent})`;
+
+type Ranked = { label: string; value: number; sub?: string; members?: string[] };
+
+// Count items by key; optionally collect the unique member names in each bucket
+// so a bar can expand to show *which* restaurants/customers are in it.
+function tally<T>(
+  items: T[],
+  key: (item: T) => string | null | undefined,
+  member?: (item: T) => string | null | undefined
+): Ranked[] {
+  const map = new Map<string, { value: number; members: Set<string> }>();
   for (const item of items) {
     const k = key(item);
     if (!k) continue;
-    counts.set(k, (counts.get(k) ?? 0) + 1);
+    const entry = map.get(k) ?? { value: 0, members: new Set<string>() };
+    entry.value += 1;
+    const m = member?.(item);
+    if (m) entry.members.add(m);
+    map.set(k, entry);
   }
-  return [...counts.entries()]
-    .map(([label, value]) => ({ label, value }))
+  return [...map.entries()]
+    .map(([label, v]) => ({ label, value: v.value, members: [...v.members].sort() }))
     .sort((a, b) => b.value - a.value);
 }
 
@@ -436,13 +466,13 @@ function DrillHeader({ title, sub, accent }: { title: string; sub: string; accen
     <div className="flex items-center gap-3">
       <button
         onClick={() => router.push("/analytics")}
-        className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0"
+        className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0"
       >
-        <ArrowLeft size={16} />
+        <ArrowLeft size={17} />
       </button>
       <div>
-        <h1 className="text-lg font-bold" style={{ color: accent }}>{title}</h1>
-        <p className="text-xs text-muted-foreground">{sub}</p>
+        <h1 className="text-xl font-bold" style={{ color: accent }}>{title}</h1>
+        <p className="text-[13px] text-muted-foreground">{sub}</p>
       </div>
     </div>
   );
@@ -458,11 +488,11 @@ function CityChips({
         <button
           key={c}
           onClick={() => onSelect(c)}
-          className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+          className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-colors border"
           style={
             selected === c
-              ? { backgroundColor: accent, color: "#fff" }
-              : { backgroundColor: "#1E1E1E", color: "#888" }
+              ? { backgroundColor: `${accent}26`, borderColor: accent, color: accent }
+              : { backgroundColor: "transparent", borderColor: "#262626", color: "#9a9a9a" }
           }
         >
           {c === "all" ? "All cities" : c}
@@ -474,8 +504,15 @@ function CityChips({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-card border border-border rounded-2xl p-4">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+    <div
+      className="rounded-2xl p-4 border"
+      style={{
+        background: "linear-gradient(180deg, #17181a 0%, #101012 100%)",
+        borderColor: "#242628",
+        boxShadow: "0 1px 0 rgba(255,255,255,0.02) inset",
+      }}
+    >
+      <p className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider mb-3.5">
         {title}
       </p>
       {children}
@@ -485,26 +522,63 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function RankBars({
   items, color, unit, empty,
-}: { items: { label: string; value: number; sub?: string }[]; color: string; unit?: string; empty?: string }) {
+}: { items: Ranked[]; color: string; unit?: string; empty?: string }) {
+  const [open, setOpen] = useState<string | null>(null);
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground text-center py-3">{empty ?? "No data yet."}</p>;
   }
   const max = Math.max(...items.map((i) => i.value), 1);
   return (
-    <div className="space-y-2.5">
-      {items.map((i) => (
-        <div key={i.label}>
-          <div className="flex justify-between items-baseline mb-1">
-            <span className="text-xs text-foreground truncate capitalize">{i.label}</span>
-            <span className="text-xs font-semibold flex-shrink-0 ml-2" style={{ color }}>
-              {i.value.toLocaleString()}{unit ? ` ${unit}` : ""}{i.sub ? ` · ${i.sub}` : ""}
-            </span>
+    <div className="space-y-3">
+      {items.map((i) => {
+        const expandable = (i.members?.length ?? 0) > 0;
+        const isOpen = open === i.label;
+        return (
+          <div key={i.label}>
+            <button
+              type="button"
+              disabled={!expandable}
+              onClick={() => setOpen(isOpen ? null : i.label)}
+              className="w-full text-left"
+            >
+              <div className="flex justify-between items-baseline mb-1.5 gap-2">
+                <span className="text-sm text-foreground truncate capitalize flex items-center gap-1">
+                  {i.label}
+                  {expandable && (
+                    <ChevronRight
+                      size={13}
+                      className="text-muted-foreground transition-transform"
+                      style={{ transform: isOpen ? "rotate(90deg)" : "none" }}
+                    />
+                  )}
+                </span>
+                <span className="text-sm font-semibold flex-shrink-0" style={{ color }}>
+                  {i.value.toLocaleString()}{unit ? ` ${unit}` : ""}{i.sub ? ` · ${i.sub}` : ""}
+                </span>
+              </div>
+              <div className="h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${(i.value / max) * 100}%`, background: barFill(color) }}
+                />
+              </div>
+            </button>
+            {isOpen && expandable && (
+              <div className="flex flex-wrap gap-1.5 mt-2 pl-1">
+                {i.members!.map((m) => (
+                  <span
+                    key={m}
+                    className="text-xs px-2 py-1 rounded-lg"
+                    style={{ backgroundColor: `${color}1a`, color }}
+                  >
+                    {m}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="h-2 bg-secondary rounded-full overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${(i.value / max) * 100}%`, backgroundColor: color }} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -565,12 +639,17 @@ function CustomersAnalytics({ customers, claims }: { customers: any[]; claims: a
       </Section>
 
       <Section title="Favourite cuisines (by claims)">
-        <RankBars items={tally(visibleClaims, (c) => c.cuisine)} color={ACCENT} unit="claims" empty="No claims yet." />
+        <RankBars
+          items={tally(visibleClaims, (c) => normalizeCuisine(c.cuisine), (c) => c.restaurant_name)}
+          color={ACCENT}
+          unit="claims"
+          empty="No claims yet."
+        />
       </Section>
 
       <Section title="Deal types they pick">
         <RankBars
-          items={tally(visibleClaims, (c) => dealKindLabel(c.discount_type))}
+          items={tally(visibleClaims, (c) => dealKindLabel(c.discount_type), (c) => c.restaurant_name)}
           color={ACCENT}
           unit="claims"
           empty="No claims yet."
@@ -582,7 +661,12 @@ function CustomersAnalytics({ customers, claims }: { customers: any[]; claims: a
       </Section>
 
       <Section title="Customers by city">
-        <RankBars items={tally(customers, (c) => c.city)} color={ACCENT} unit="customers" empty="No cities recorded." />
+        <RankBars
+          items={tally(customers, (c) => c.city, (c) => c.name ?? c.email)}
+          color={ACCENT}
+          unit="customers"
+          empty="No cities recorded."
+        />
       </Section>
     </div>
   );
@@ -633,7 +717,7 @@ function RestaurantsAnalytics({ restaurants, deals }: { restaurants: any[]; deal
 
       <Section title="Deal types being posted">
         <RankBars
-          items={tally(visibleDeals, (d) => dealKindLabel(d.discount_type))}
+          items={tally(visibleDeals, (d) => dealKindLabel(d.discount_type), (d) => restById.get(d.restaurant_id)?.name)}
           color={ACCENT}
           unit="deals"
           empty="No deals yet."
@@ -642,7 +726,11 @@ function RestaurantsAnalytics({ restaurants, deals }: { restaurants: any[]; deal
 
       <Section title="Cuisines posting deals">
         <RankBars
-          items={tally(visibleDeals, (d) => restById.get(d.restaurant_id)?.cuisine)}
+          items={tally(
+            visibleDeals,
+            (d) => normalizeCuisine(restById.get(d.restaurant_id)?.cuisine),
+            (d) => restById.get(d.restaurant_id)?.name
+          )}
           color={ACCENT}
           unit="deals"
           empty="No deals yet."
@@ -650,44 +738,55 @@ function RestaurantsAnalytics({ restaurants, deals }: { restaurants: any[]; deal
       </Section>
 
       <Section title="When deals get posted">
-        <div className="flex items-end gap-1.5 h-24 mb-3">
+        <div className="flex items-end gap-1.5 h-28 mb-3">
           {postedByDay.map((d) => {
             const max = Math.max(...postedByDay.map((x) => x.value), 1);
             return (
-              <div key={d.label} className="flex-1 flex flex-col items-center justify-end gap-1 h-full">
-                <span className="text-[10px] text-muted-foreground">{d.value || ""}</span>
+              <div key={d.label} className="flex-1 flex flex-col items-center justify-end gap-1.5 h-full">
+                <span className="text-[11px] font-medium" style={{ color: d.value > 0 ? ACCENT : "transparent" }}>
+                  {d.value || "0"}
+                </span>
                 <div
-                  className="w-full rounded-t"
+                  className="w-full rounded-md transition-all"
                   style={{
-                    height: `${(d.value / max) * 70}%`,
-                    minHeight: d.value > 0 ? 4 : 1,
-                    backgroundColor: d.value > 0 ? ACCENT : "#1E1E1E",
+                    height: `${(d.value / max) * 72}%`,
+                    minHeight: d.value > 0 ? 6 : 2,
+                    background: d.value > 0 ? barFill(ACCENT) : "rgba(255,255,255,0.05)",
                   }}
                 />
-                <span className="text-[10px] text-muted-foreground">{d.label}</span>
+                <span className="text-[11px] text-muted-foreground">{d.label}</span>
               </div>
             );
           })}
         </div>
-        <div className="flex gap-2 text-xs">
-          <span className="flex-1 bg-secondary rounded-lg px-3 py-2 text-center">
-            <span className="font-bold" style={{ color: ACCENT }}>{weekday}</span>
+        <div className="flex gap-2 text-[13px]">
+          <span className="flex-1 rounded-xl px-3 py-2.5 text-center" style={{ backgroundColor: `${ACCENT}14` }}>
+            <span className="font-bold text-base" style={{ color: ACCENT }}>{weekday}</span>
             <span className="text-muted-foreground"> weekday posts</span>
           </span>
-          <span className="flex-1 bg-secondary rounded-lg px-3 py-2 text-center">
-            <span className="font-bold" style={{ color: ACCENT }}>{weekend}</span>
+          <span className="flex-1 rounded-xl px-3 py-2.5 text-center" style={{ backgroundColor: `${ACCENT}14` }}>
+            <span className="font-bold text-base" style={{ color: ACCENT }}>{weekend}</span>
             <span className="text-muted-foreground"> Fri–Sun posts</span>
           </span>
         </div>
       </Section>
 
       <Section title="Restaurants by city">
-        <RankBars items={tally(restaurants, (r) => r.city)} color={ACCENT} unit="venues" empty="No cities recorded." />
+        <RankBars
+          items={tally(restaurants, (r) => r.city, (r) => r.name)}
+          color={ACCENT}
+          unit="venues"
+          empty="No cities recorded."
+        />
       </Section>
 
       <Section title="Live vs pending">
         <RankBars
-          items={tally(restaurants, (r) => (r.is_live ? "Live on RepEAT" : r.verification_status === "pending" ? "Awaiting verification" : "Not live"))}
+          items={tally(
+            restaurants,
+            (r) => (r.is_live ? "Live on RepEAT" : r.verification_status === "pending" ? "Awaiting verification" : "Not live"),
+            (r) => r.name
+          )}
           color={ACCENT}
           unit="venues"
         />
@@ -742,7 +841,12 @@ function CreatorsAnalytics({ creators, collabs }: { creators: any[]; collabs: an
       </Section>
 
       <Section title="Collabs by cuisine">
-        <RankBars items={tally(visibleCollabs, (c) => c.cuisine)} color={ACCENT} unit="collabs" empty="No collabs yet." />
+        <RankBars
+          items={tally(visibleCollabs, (c) => normalizeCuisine(c.cuisine), (c) => c.restaurant_name)}
+          color={ACCENT}
+          unit="collabs"
+          empty="No collabs yet."
+        />
       </Section>
 
       <Section title="Restaurants they collab with">
@@ -751,7 +855,7 @@ function CreatorsAnalytics({ creators, collabs }: { creators: any[]; collabs: an
 
       <Section title="Collab status">
         <RankBars
-          items={tally(visibleCollabs, (c) => (c.status ?? "unknown").replace(/_/g, " "))}
+          items={tally(visibleCollabs, (c) => (c.status ?? "unknown").replace(/_/g, " "), (c) => c.restaurant_name)}
           color={ACCENT}
           unit="collabs"
           empty="No collabs yet."
@@ -759,11 +863,21 @@ function CreatorsAnalytics({ creators, collabs }: { creators: any[]; collabs: an
       </Section>
 
       <Section title="Creator niches">
-        <RankBars items={tally(creators, (c) => c.niche)} color={ACCENT} unit="creators" empty="No niches recorded." />
+        <RankBars
+          items={tally(creators, (c) => c.niche, (c) => c.name)}
+          color={ACCENT}
+          unit="creators"
+          empty="No niches recorded."
+        />
       </Section>
 
       <Section title="Creators by city">
-        <RankBars items={tally(creators, (c) => c.city)} color={ACCENT} unit="creators" empty="No cities recorded." />
+        <RankBars
+          items={tally(creators, (c) => c.city, (c) => c.name)}
+          color={ACCENT}
+          unit="creators"
+          empty="No cities recorded."
+        />
       </Section>
     </div>
   );
